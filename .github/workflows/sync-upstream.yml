@@ -1,0 +1,236 @@
+name: 🔄 同步上游 + 部署 / Sync upstream and deploy
+
+# 手动同步上游（aozorae/Edgechat）的更新并部署。平时不会自己跑，想更新时点一下：
+#
+# 用法：Actions → 左侧选本 workflow → Run workflow
+#   默认（什么都不改）  = 同步上游 + 自动部署
+#   dry_run = true      = 只看上游有哪些新提交，不改仓库、不部署
+#   deploy  = false     = 只同步代码，不部署
+#   force_deploy = true = 即使没有新提交也重新部署一次
+#
+# 部署是去触发仓库原有的 deploy-worker.yml（同一套 Secrets，D1/KV/R2 自动跟随），
+# 同步用 GitHub 官方 fork sync 接口，不会丢掉本 fork 自己的提交。
+#
+# ⚠️ 不要在仓库 Code 页点 Sync fork 里的 “Discard commits”，
+#    那会把本 fork 自己加的文件（包括这个 workflow）一起删掉。
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只检查上游更新，不同步、不部署"
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        description: "同步成功后自动部署"
+        required: false
+        type: boolean
+        default: true
+      force_deploy:
+        description: "没有更新也强制部署一次"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    name: 🔄 同步上游并部署
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 检出代码仓库 / Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔎 定位上游仓库 / Resolve upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          UPSTREAM=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.parent.full_name // empty' 2>/dev/null || true)
+
+          if [ -z "$UPSTREAM" ]; then
+            UPSTREAM="aozorae/Edgechat"
+            echo "::warning:: 未能从 API 读到 parent 仓库，回退使用 $UPSTREAM"
+          fi
+
+          echo "UPSTREAM=$UPSTREAM" >> "$GITHUB_ENV"
+          echo "✅ 上游仓库：$UPSTREAM"
+
+      - name: 📥 比对上游 / Compare with upstream
+        id: check
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM}.git"
+          git fetch --no-tags upstream "$GITHUB_REF_NAME"
+
+          BASE=$(git merge-base HEAD "upstream/${GITHUB_REF_NAME}")
+          BEHIND=$(git rev-list --count "HEAD..upstream/${GITHUB_REF_NAME}")
+          AHEAD=$(git rev-list --count "upstream/${GITHUB_REF_NAME}..HEAD")
+          # 只看上游那边动过的 workflow 文件（内置 token 没有 workflows 写权限）
+          WF_CHANGED=$(git diff --name-only "${BASE}..upstream/${GITHUB_REF_NAME}" -- .github/workflows | wc -l | tr -d ' ')
+
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "wf_changed=$WF_CHANGED" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 📥 上游对比：${UPSTREAM}（分支 ${GITHUB_REF_NAME}）"
+            echo ""
+            echo "| 项目 | 数量 |"
+            echo "|------|------|"
+            echo "| 落后上游的提交 | **${BEHIND}** |"
+            echo "| 本 fork 独有的提交 | **${AHEAD}** |"
+            echo ""
+            if [ "$BEHIND" -gt 0 ]; then
+              echo "### 待同步的提交"
+              echo ""
+              echo '```'
+              git log --no-decorate --pretty='%h  %ad  %s' --date=short "HEAD..upstream/${GITHUB_REF_NAME}"
+              echo '```'
+              echo ""
+              echo "### 涉及的文件"
+              echo ""
+              echo '```'
+              git diff --stat "${BASE}..upstream/${GITHUB_REF_NAME}"
+              echo '```'
+            else
+              echo "✅ 已经是最新，无需同步。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "落后 $BEHIND 个提交，本地独有 $AHEAD 个提交，上游改动的 workflow 文件数 $WF_CHANGED"
+
+      - name: 🔄 执行同步 / Sync fork
+        id: sync
+        if: github.event.inputs.dry_run != 'true' && steps.check.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          UPDATED=false
+          METHOD=""
+
+          # 首选官方 fork sync 接口（等价于仓库页的 Sync fork → Update branch，能快进就快进）
+          echo "🔗 尝试 merge-upstream API..."
+          set +e
+            OUT=$(gh api --method POST "repos/$GITHUB_REPOSITORY/merge-upstream" -f branch="$GITHUB_REF_NAME" 2>&1)
+            STATUS=$?
+          set -e
+          echo "$OUT"
+
+          if [ $STATUS -eq 0 ]; then
+            UPDATED=true
+            METHOD="merge-upstream API"
+          else
+            echo "::warning:: merge-upstream 接口没成功，回退到本地 git merge"
+
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            if git merge --ff-only "upstream/${GITHUB_REF_NAME}"; then
+              METHOD="git fast-forward"
+            else
+              # 有分歧时一律以上游为准，保证不会冲突（本 fork 独有的文件会保留）
+              git merge --no-edit -X theirs "upstream/${GITHUB_REF_NAME}" -m "chore: sync upstream ${UPSTREAM}"
+              METHOD="git merge -X theirs"
+            fi
+
+            set +e
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+              PUSH_STATUS=$?
+            set -e
+
+            if [ $PUSH_STATUS -eq 0 ]; then
+              UPDATED=true
+            fi
+          fi
+
+          echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
+
+          if [ "$UPDATED" = "true" ]; then
+            NEW_SHA=$(git rev-parse --short "upstream/${GITHUB_REF_NAME}")
+            {
+              echo ""
+              echo "## ✅ 同步完成"
+              echo ""
+              echo "方式：\`${METHOD}\`，已同步到上游 \`${NEW_SHA}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo ""
+              echo "## ❌ 同步失败"
+              echo ""
+              if [ "${{ steps.check.outputs.wf_changed }}" != "0" ]; then
+                echo "上游这次改动包含 \`.github/workflows/\` 里的文件，而 Actions 的内置 token 没有 \`workflows\` 写权限，推不上去。"
+                echo ""
+                echo "**解决办法**：打开仓库 Code 页 → 右上角 **Sync fork** → **Update branch**"
+                echo "（注意选 Update branch，不要选 Discard commits），然后回来跑一次本 workflow 并勾上 \`force_deploy\`。"
+              else
+                echo "推送被拒绝。请检查 Settings → Actions → General → Workflow permissions"
+                echo "是否为 **Read and write permissions**，然后重试。"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: 🚀 触发部署 / Trigger deploy
+        id: trigger
+        if: >-
+          github.event.inputs.dry_run != 'true' &&
+          github.event.inputs.deploy != 'false' &&
+          (steps.sync.outputs.updated == 'true' || github.event.inputs.force_deploy == 'true')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WF: deploy-worker.yml
+        run: |
+          BEFORE=$(gh run list --workflow "$WF" --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+
+          echo "🚀 触发 $WF ..."
+          gh workflow run "$WF" --ref "$GITHUB_REF_NAME"
+
+          FOUND=""
+          for _ in $(seq 1 12); do
+            sleep 10
+            AFTER=$(gh run list --workflow "$WF" --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$AFTER" != "$BEFORE" ]; then
+              FOUND=$(gh run list --workflow "$WF" --limit 1 --json url --jq '.[0].Url')
+              break
+            fi
+          done
+
+          {
+            echo ""
+            echo "## 🚀 部署"
+            echo ""
+            if [ -n "$FOUND" ]; then
+              echo "已触发部署工作流：${FOUND}"
+              echo ""
+              echo "部署要跑几分钟，去那个运行记录里看结果。"
+            else
+              echo "⚠️ 没检测到新的部署运行。请手动去 Actions → **Deploy Worker** → Run workflow。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$FOUND" ]; then
+            echo "::warning:: 没能自动触发部署，请手动点一次 Deploy Worker 那个 workflow"
+          else
+            echo "✅ 已触发：$FOUND"
+          fi
+
+      - name: ℹ️ 无需操作 / Nothing to do
+        if: >-
+          github.event.inputs.dry_run == 'true' ||
+          (steps.check.outputs.behind == '0' && github.event.inputs.force_deploy != 'true')
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "ℹ️ dry_run 模式：只做了检查，没有同步也没有部署。"
+          else
+            echo "ℹ️ 已是最新，没有可同步的更新（想强制重新部署就勾 force_deploy）。"
+          fi
