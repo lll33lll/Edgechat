@@ -200,7 +200,7 @@ jobs:
             sleep 10
             AFTER=$(gh run list --workflow "$WF" --limit 1 --json databaseId --jq '.[0].databaseId // 0')
             if [ "$AFTER" != "$BEFORE" ]; then
-              FOUND=$(gh run list --workflow "$WF" --limit 1 --json url --jq '.[0].Url')
+              FOUND=$(gh run list --workflow "$WF" --limit 1 --json url --jq '.[0].url')
               break
             fi
           done
