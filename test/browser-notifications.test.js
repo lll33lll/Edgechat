@@ -7,8 +7,8 @@ import {
 } from "../frontend/src/composables/useBrowserNotifications.js";
 import { CHINESE_LOCALE, setLocale } from "../frontend/src/i18n.js";
 
-beforeEach(() => {
-	setLocale(CHINESE_LOCALE);
+beforeEach(async () => {
+	await setLocale(CHINESE_LOCALE);
 });
 
 function createStorage() {
@@ -135,19 +135,22 @@ test("会话免打扰阻止通知，取消后通知可聚合并打开会话", as
 	assert.equal(notifications.notifyRoom(mentionEvent), true);
 	assert.equal(shown[2].title, "有人在 产品协作 提及你");
 	assert.equal(shown[2].options.body, "Alice: @admin 请看一下");
-		notifications.toggleRoomMuted(groupRoom);
-		assert.equal(notifications.notifyRoom(mentionEvent), true);
-		assert.equal(shown.length, 4);
+	notifications.toggleRoomMuted(groupRoom);
+	assert.equal(notifications.shouldNotifyRoom(groupRoom), false);
+	assert.equal(notifications.shouldNotifyRoom(mentionEvent), true);
+	assert.equal(notifications.notifyRoom(mentionEvent), true);
+	assert.equal(shown.length, 4);
 
-		const replyEvent = {
-			room: groupRoom,
-			replyToMe: true,
-			contentPreview: "已经处理好了",
-			sender: { displayName: "Bob" },
-		};
-		assert.equal(notifications.notifyRoom(replyEvent), true);
-		assert.equal(shown[4].title, "有人在 产品协作 回复你");
-		assert.equal(shown[4].options.body, "Bob: 已经处理好了");
+	const replyEvent = {
+		room: groupRoom,
+		replyToMe: true,
+		contentPreview: "已经处理好了",
+		sender: { displayName: "Bob" },
+	};
+	assert.equal(notifications.shouldNotifyRoom(replyEvent), true);
+	assert.equal(notifications.notifyRoom(replyEvent), true);
+	assert.equal(shown[4].title, "有人在 产品协作 回复你");
+	assert.equal(shown[4].options.body, "Bob: 已经处理好了");
 });
 
 test("浏览器拒绝通知权限时开关保持禁用", async () => {

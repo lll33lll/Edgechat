@@ -59,6 +59,10 @@ async function createGroup(harness, name = "重建群", kind = "private") {
 }
 
 function addRelatedRecords(database, id) {
+	database.run(
+		`INSERT INTO uploaded_files (object_key, owner_user_id)
+		 VALUES ('group-avatar', 1), ('group-file', 1)`,
+	);
 	database.run("UPDATE channels SET avatar_key = 'group-avatar' WHERE id = ?", [id]);
 	database.run(
 		`INSERT INTO messages (channel_id, sender_id, content, attachment_key)
@@ -69,10 +73,6 @@ function addRelatedRecords(database, id) {
 	database.run("INSERT INTO channel_pins (channel_id, message_id, pinned_by) VALUES (?, ?, 1)", [id, messageId]);
 	database.run("INSERT INTO message_event_compaction (channel_id, compacted_through) VALUES (?, 1)", [id]);
 	database.run("INSERT INTO telegram_mappings (channel_id, telegram_chat_id) VALUES (?, '-123')", [id]);
-	database.run(
-		`INSERT INTO uploaded_files (object_key, owner_user_id)
-		 VALUES ('group-avatar', 1), ('group-file', 1)`,
-	);
 }
 
 for (const kind of ["public", "private"]) {
@@ -141,6 +141,9 @@ test("GC 复用硬删除清理历史群组，文件失败重试且保留共享�
 	const id = await createGroup(harness);
 	addRelatedRecords(database, id);
 	database.run("UPDATE channels SET deleted_at = datetime('now', '-61 day') WHERE id = ?", [id]);
+	database.run(
+		"UPDATE uploaded_files SET owner_user_id = 2 WHERE object_key = 'group-avatar'",
+	);
 	database.run("UPDATE users SET avatar_key = 'group-avatar' WHERE id = 2");
 	const deleteFile = env.FILES.delete;
 	env.FILES.delete = async () => { throw new Error("R2 unavailable"); };

@@ -237,20 +237,71 @@ paths:
   /me/profile:
     patch:
       operationId: updateProfile
+      description: |
+        Updates only explicitly supplied fields of the authenticated user.
+        Omitted bio/displayName/avatarKey fields keep their existing values.
+        bio is plain text: normalize CRLF/CR to LF, trim surrounding whitespace,
+        then validate at most 200 Unicode code points. Empty or whitespace-only
+        bio clears it. Non-string or over-limit bio is rejected without truncation.
+        avatarKey null clears the avatar. A client-supplied target user ID is ignored.
+        The same business logic is available at PATCH /api/me/profile.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [displayName]
               properties:
                 displayName: { type: string }
+                bio:
+                  type: string
+                  description: Optional site-visible bio, at most 200 Unicode code points after normalization.
                 avatarKey: { type: [string, "null"] }
-                clearAvatar: { type: boolean }
       responses:
         "200":
           description: Updated session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session: { $ref: "#/components/schemas/Session" }
+        "400":
+          description: Invalid profile input
+        "401":
+          description: Authentication required
+  /users/{userId}/profile:
+    get:
+      operationId: getUserProfile
+      description: |
+        Reads the current public profile of one local account. Requires authentication;
+        all signed-in site users have the same visibility as the user directory.
+        Deleted, disabled and nonexistent accounts all return the same unavailable response.
+        External identities (including numeric Telegram IDs) must not use this endpoint.
+        Bio is site-visible plain text, not end-to-end encrypted, and is not included in
+        message, reply, member, DM or bootstrap user summaries.
+        Also available at GET /api/users/{userId}/profile through the shared v1 proxy.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 9007199254740991 }
+      responses:
+        "200":
+          description: Explicit public-field whitelist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile]
+                properties:
+                  profile: { $ref: "#/components/schemas/UserProfile" }
+        "400":
+          description: Invalid local user ID
+        "401":
+          description: Authentication required
+        "404":
+          description: User profile unavailable
   /rooms/{kind}/{roomId}/messages:
     get:
       operationId: listRoomMessages
@@ -523,6 +574,9 @@ components:
         username: { type: string }
         displayName: { type: string }
         avatarUrl: { type: string }
+        bio:
+          type: string
+          description: Present on Web login, profile update and session restore; omitted by older/device session producers.
         isAdmin: { type: boolean }
         sessionVersion: { type: integer }
         deviceSessionId: { type: string }
@@ -534,6 +588,16 @@ components:
         username: { type: string }
         displayName: { type: string }
         avatarUrl: { type: string }
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required: [id, username, displayName, avatarUrl, bio]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: string }
+        bio: { type: string, maxLength: 200, default: "" }
     Channel:
       type: object
       required: [id, name, kind]

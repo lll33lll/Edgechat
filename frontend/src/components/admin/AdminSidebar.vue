@@ -44,7 +44,7 @@ const filteredNavigation = computed(() => {
     .filter(Boolean);
 });
 
-const adminName = computed(() => store.session?.displayName || store.session?.username || 'Administrator');
+const adminName = computed(() => store.session?.displayName || store.session?.username || t('admin.sidebar.administrator'));
 
 function isPrimaryActive(item) {
   return route.path === item.to || route.path.startsWith(`${item.to}/`);

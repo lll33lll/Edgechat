@@ -3,7 +3,6 @@ import { cors } from 'hono/cors';
 import {
   createSession,
   deleteSession,
-  getSession,
   hashPassword,
   isConfiguredAdminUsername,
   putSession,
@@ -19,14 +18,16 @@ import {
 import { getSiteSettings } from './data/site-settings.js';
 import { getUserByUsername, listActiveUsers } from './data/users.js';
 import { ApiError } from './errors.js';
-import { resolveAvatarKeyUpdate } from './avatar-policy.js';
 import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMaintenanceRoutes } from './api/maintenance.ts';
 import { registerChannelRoutes } from './api/channels.js';
+import { registerContactRoutes } from './api/contacts.ts';
 import { registerDmRoutes } from './api/dm.js';
 import { registerMessageRoutes } from './api/messages.js';
 import { registerUploadRoutes } from './api/upload.js';
+import { registerUserBlockRoutes } from './api/user-blocks.ts';
+import { registerUserProfileRoutes } from './api/user-profile.ts';
 import { registerV1Routes } from './api/v1.js';
 import {
   registerTelegramAdminRoutes,
@@ -166,7 +167,7 @@ app.use('/api/*', authMiddleware);
 app.get('/api/auth/session', async (c) => {
   const session = c.get('session');
   const user = await c.env.DB.prepare(
-    `SELECT display_name, avatar_key, is_disabled, disabled_until
+    `SELECT display_name, avatar_key, bio, is_disabled, disabled_until
      FROM users
      WHERE id = ?
        AND deleted_at IS NULL
@@ -183,6 +184,7 @@ app.get('/api/auth/session', async (c) => {
   const freshSession = {
     ...session,
     displayName: user.results[0].display_name,
+    bio: user.results[0].bio,
     avatarUrl: user.results[0].avatar_key ? `/files/${encodeURIComponent(user.results[0].avatar_key)}` : ''
   };
   await putSession(c.env, freshSession);
@@ -251,44 +253,6 @@ app.post('/api/auth/change-password', async (c) => {
   return c.json({ ok: true });
 });
 
-app.patch('/api/me/profile', async (c) => {
-  const session = c.get('session');
-  const payload = await parseJsonRequest(c.req.raw);
-  const displayName = String(payload.displayName || session.displayName).trim();
-  const avatarUpdate = await resolveAvatarKeyUpdate(c.env.DB, session.userId, payload);
-  if (!displayName) {
-    return errorResponse('显示名称不能为空');
-  }
-
-  const updates = ['display_name = ?', 'updated_at = CURRENT_TIMESTAMP'];
-  const binds = [displayName];
-  if (avatarUpdate.provided) {
-    updates.splice(1, 0, 'avatar_key = ?');
-    binds.push(avatarUpdate.key);
-  }
-  await c.env.DB.prepare(
-    `UPDATE users
-     SET ${updates.join(', ')}
-     WHERE id = ?`
-  )
-    .bind(...binds, session.userId)
-    .run();
-
-  const nextSession = await getSession(c.env, session.token);
-  const merged = {
-    ...nextSession,
-    displayName,
-    avatarUrl: avatarUpdate.provided
-      ? avatarUpdate.key
-        ? `/files/${encodeURIComponent(avatarUpdate.key)}`
-        : ''
-      : nextSession.avatarUrl
-  };
-  await putSession(c.env, merged);
-
-  return c.json({ session: merged });
-});
-
 app.get('/api/users', async (c) => {
   const session = c.get('session');
   const users = await listActiveUsers(c.env.DB, session.userId);
@@ -310,7 +274,10 @@ app.get('/api/bootstrap', async (c) => {
 app.use('/api/admin/*', adminMiddleware);
 
 registerMessageRoutes(app);
+registerContactRoutes(app);
 registerDmRoutes(app);
+registerUserBlockRoutes(app);
+registerUserProfileRoutes(app);
 registerUploadRoutes(app);
 registerChannelRoutes(app);
 registerAdminRoutes(app);

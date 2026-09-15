@@ -15,6 +15,7 @@ const SQL = await initSqlJs({
 		return fileURLToPath(new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url));
 	},
 });
+const schemaSql = readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8");
 
 function readMigration(file) {
 	return readFileSync(new URL(file, repositoryRoot), "utf8");
@@ -233,6 +234,94 @@ test("Windows CRLF 迁移校验值会在 Linux Actions 中自动归一化", asyn
 	assert.deepEqual(plan.decisions, [{ id: "cross-platform", action: "normalize" }]);
 	assert.match(plan.sql, /统一 cross-platform 的跨平台换行符校验值/);
 	assert.match(plan.sql, /UPDATE edgechat_schema_migrations/);
+});
+
+test("R2 引用迁移会替换已发布触发器，升级库与新装库使用相同不变量", async () => {
+	const migrationIndex = D1_MIGRATIONS.findIndex(
+		(migration) => migration.id === "2026-09-12-r2-reference-invariants",
+	);
+	const migration = D1_MIGRATIONS[migrationIndex];
+	const plan = await buildD1MigrationPlan({
+		migrations: [migration],
+		appliedMigrations: new Map(),
+		artifacts: artifactsThrough(migrationIndex - 1),
+		readSql: readMigration,
+	});
+	assert.deepEqual(plan.decisions, [
+		{ id: "2026-09-12-r2-reference-invariants", action: "apply" },
+	]);
+	assert.match(plan.sql, /DROP TRIGGER IF EXISTS prevent_pending_message_attachment_insert/);
+
+	const upgraded = new SQL.Database();
+	upgraded.exec(schemaSql);
+	for (const name of [
+		"prevent_general_member_removal",
+		"prevent_pending_message_attachment_insert",
+		"prevent_pending_message_attachment_update",
+		"prevent_pending_user_avatar_insert",
+		"prevent_pending_user_avatar_update",
+		"prevent_pending_channel_avatar_insert",
+		"prevent_pending_channel_avatar_update",
+		"prevent_pending_site_icon_insert",
+		"prevent_pending_site_icon_update",
+	]) {
+		upgraded.exec(`DROP TRIGGER IF EXISTS ${name}`);
+	}
+	upgraded.exec(readMigration("worker/migrations/2026-09-11-r2-cleanup-guards.sql"));
+	upgraded.exec(`CREATE TRIGGER prevent_general_member_removal
+		BEFORE DELETE ON channel_members
+		WHEN EXISTS (SELECT 1 FROM channels WHERE id = OLD.channel_id AND name = 'general')
+		BEGIN SELECT RAISE(ABORT, 'GENERAL_MEMBERSHIP_REQUIRED'); END`);
+	upgraded.exec(
+		`INSERT INTO users (id, username, display_name, password_hash, password_salt)
+		 VALUES (1, 'legacy', 'Legacy', 'hash', 'salt')`,
+	);
+	upgraded.exec(
+		"INSERT INTO messages (channel_id, sender_id, content, attachment_key) VALUES (1, 1, 'old guard', 'missing-before-upgrade')",
+	);
+	upgraded.exec(readMigration(migration.file));
+	assert.throws(
+		() => upgraded.exec(
+			"INSERT INTO messages (channel_id, sender_id, content, attachment_key) VALUES (1, 1, 'new guard', 'missing-after-upgrade')",
+		),
+		/r2_local_object_unavailable/,
+	);
+	const triggerSql = upgraded.exec(
+		"SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'prevent_pending_message_attachment_insert'",
+	)[0].values[0][0];
+	assert.match(triggerSql, /FROM uploaded_files/);
+	assert.equal(
+		upgraded.exec(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('prevent_pending_site_icon_insert', 'prevent_pending_site_icon_update')",
+		)[0].values[0][0],
+		2,
+	);
+
+	const fresh = new SQL.Database();
+	fresh.exec(schemaSql);
+	const normalizedTriggerSql = (db, name) =>
+		String(
+			db.exec("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?", [name])[0]
+				.values[0][0],
+		)
+			.replace(/CREATE TRIGGER IF NOT EXISTS/i, "CREATE TRIGGER")
+			.replace(/\s+/g, " ")
+			.trim();
+	for (const name of [
+		"prevent_general_member_removal",
+		"prevent_pending_message_attachment_insert",
+		"prevent_pending_message_attachment_update",
+		"prevent_pending_user_avatar_insert",
+		"prevent_pending_user_avatar_update",
+		"prevent_pending_channel_avatar_insert",
+		"prevent_pending_channel_avatar_update",
+		"prevent_pending_site_icon_insert",
+		"prevent_pending_site_icon_update",
+	]) {
+		assert.equal(normalizedTriggerSql(upgraded, name), normalizedTriggerSql(fresh, name));
+	}
+	upgraded.close();
+	fresh.close();
 });
 
 test("部署工作流每次发布都在 Worker 之前准备并执行 D1 迁移", () => {

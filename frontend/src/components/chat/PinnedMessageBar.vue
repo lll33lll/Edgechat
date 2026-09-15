@@ -2,6 +2,7 @@
 import { Pin, PinOff } from '@lucide/vue';
 import { computed } from 'vue';
 import { t } from '../../i18n.js';
+import { messageMarkdownToPlainText } from '../../message-markdown.ts';
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -10,7 +11,7 @@ const props = defineProps({
 const emit = defineEmits(['reveal', 'unpin']);
 
 const preview = computed(() => {
-  const content = String(props.message?.content || '').trim();
+  const content = messageMarkdownToPlainText(props.message?.content || '');
   if (content) return content;
   return props.message?.attachment?.name || t('attachments.fallback');
 });

@@ -4,8 +4,8 @@ import test, { beforeEach } from "node:test";
 import { useChatSidebar } from "../frontend/src/composables/useChatSidebar.js";
 import { CHINESE_LOCALE, setLocale } from "../frontend/src/i18n.js";
 
-beforeEach(() => {
-	setLocale(CHINESE_LOCALE);
+beforeEach(async () => {
+	await setLocale(CHINESE_LOCALE);
 });
 
 test("general 在私信和其他群组之前永久置顶", () => {

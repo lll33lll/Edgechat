@@ -26,8 +26,10 @@ function createHarness(overrides = {}) {
 		users,
 		dms,
 		error,
-		refreshAndOpen: async (identity, fallback) =>
-			calls.push(["refreshAndOpen", identity, fallback]),
+		refreshAndOpen: overrides.refreshAndOpen || (async (identity, fallback) => {
+			calls.push(["refreshAndOpen", identity, fallback]);
+			return true;
+		}),
 		openGroupDialog: () => calls.push(["openGroupDialog"]),
 		conversationApi,
 	});
@@ -58,7 +60,7 @@ test("添加人员入口同时保留新私聊和创建群聊动作", () => {
 test("发起新私聊后刷新侧栏并自动打开对应会话", async () => {
 	const { creation, users, calls } = createHarness();
 	creation.open();
-	await creation.openDm(users.value[0]);
+	assert.deepEqual(await creation.openDm(users.value[0]), { ok: true });
 
 	assert.deepEqual(calls, [
 		["openDm", 1],
@@ -90,10 +92,19 @@ test("私聊创建失败时保留弹窗并向用户显示错误", async () => {
 		},
 	});
 	creation.open();
-	await creation.openDm(users.value[2]);
+	assert.deepEqual(await creation.openDm(users.value[2]), { ok: false, error: "暂时无法发起对话" });
 
 	assert.equal(creation.show.value, true);
 	assert.equal(creation.openingDmUserId.value, null);
 	assert.equal(error.value, "暂时无法发起对话");
 	assert.deepEqual(calls, [["openDm", 3]]);
+});
+
+test("创建私信接口成功但未能进入会话时，明确返回失败并保留弹窗", async () => {
+	const { creation, users } = createHarness({ refreshAndOpen: async () => false });
+	creation.open();
+	const result = await creation.openDm(users.value[0]);
+	assert.equal(result.ok, false);
+	assert.ok(result.error);
+	assert.equal(creation.show.value, true);
 });

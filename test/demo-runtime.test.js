@@ -11,11 +11,12 @@ test.beforeEach(() => {
   resetDemoState();
 });
 
-test('demo backend exposes chat, admin, storage and Telegram fixture data', async () => {
-  const [site, session, bootstrap, overview, storage, telegram] = await Promise.all([
+test('demo backend exposes chat, contacts, admin, storage and Telegram fixture data', async () => {
+	const [site, session, bootstrap, contacts, overview, storage, telegram] = await Promise.all([
     requestDemo('/site'),
     requestDemo('/auth/session'),
-    requestDemo('/bootstrap'),
+		requestDemo('/bootstrap'),
+		requestDemo('/contacts'),
     requestDemo('/admin/overview'),
     requestDemo('/admin/storage/scan'),
     requestDemo('/admin/telegram')
@@ -24,7 +25,11 @@ test('demo backend exposes chat, admin, storage and Telegram fixture data', asyn
   assert.equal(site.site.siteName, 'EdgeChat Demo');
   assert.equal(session.session.isAdmin, true);
   assert.equal(bootstrap.channels.some((channel) => channel.isGeneral), true);
-  assert.equal(bootstrap.dms.length, 1);
+	assert.equal(bootstrap.dms.length, 1);
+	assert.equal(contacts.users.some((user) => user.id === session.session.userId), true);
+	assert.equal(contacts.users.some((user) => user.displayName.length > 20), true);
+	assert.equal(contacts.users.filter((user) => user.displayName === 'Alice').length, 2);
+	assert.equal(contacts.users.some((user) => 'bio' in user || 'isAdmin' in user), false);
   assert.equal(overview.channels.length, 4);
   assert.equal(storage.scannedObjects, 4);
   assert.equal(storage.items.some((item) => item.ownerType === 'telegram'), true);
@@ -158,6 +163,51 @@ test('demo room socket echoes sent messages through the real-time contract', asy
   assert.deepEqual(inboxFrames, []);
   socket.close();
   inboxSocket.close();
+});
+
+test('demo direct messages honor blocking and resume after unblocking', async () => {
+	await requestDemo('/users/2/block', { method: 'PUT' });
+	assert.equal((await requestDemo('/bootstrap')).dms[0].isBlockedByMe, true);
+
+	await requestDemo('/auth/login', {
+		method: 'POST',
+		body: { username: 'alice', password: 'demo' }
+	});
+	const frames = [];
+	let socket;
+	await new Promise((resolve) => {
+		socket = connectDemoRoomSocket({
+			kind: 'dm',
+			roomId: 10,
+			onMessage(frame) {
+				frames.push(JSON.parse(frame));
+			},
+			onStatus(event) {
+				if (event.status === 'open') resolve();
+			}
+		});
+	});
+	const before = (await requestDemo('/messages?kind=dm&roomId=10')).messages.length;
+	socket.send(JSON.stringify({ type: 'send', content: 'blocked message' }));
+	assert.deepEqual(frames.at(-1), {
+		type: 'error',
+		error: '发送被拒，你已经被拉黑'
+	});
+	assert.equal((await requestDemo('/messages?kind=dm&roomId=10')).messages.length, before);
+
+	await requestDemo('/auth/login', {
+		method: 'POST',
+		body: { username: 'admin', password: 'demo' }
+	});
+	await requestDemo('/users/2/block', { method: 'DELETE' });
+	await requestDemo('/auth/login', {
+		method: 'POST',
+		body: { username: 'alice', password: 'demo' }
+	});
+	socket.send(JSON.stringify({ type: 'send', content: 'restored message' }));
+	assert.equal(frames.at(-1).type, 'message');
+	assert.equal(frames.at(-1).message.content, 'restored message');
+	socket.close();
 });
 
 test('demo room socket persists pin, unpin and pinned-message deletion', async () => {

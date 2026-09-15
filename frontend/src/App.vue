@@ -9,7 +9,7 @@ const DemoNavigator = globalThis.__EDGECHAT_DEMO__
 <template>
   <router-view v-slot="{ Component, route }">
     <Transition :name="route.meta.transition || 'page'" mode="out-in">
-      <component :is="Component" :key="route.path" />
+      <component :is="Component" :key="route.meta.workspace ? 'workspace' : route.path" />
     </Transition>
   </router-view>
   <component :is="DemoNavigator" v-if="DemoNavigator" />

@@ -1,5 +1,6 @@
 import { dispatchAuthInvalid, getStoredToken } from './auth-storage.js';
 import { getEdgeChatServerOrigin, resolveServerUrl } from './capacitor-platform.ts';
+import { t } from './i18n.js';
 import { localizedError, localizeErrorMessage } from './localized-error.js';
 import { getRuntimeFileUrl, isDemoMode, requestRuntime } from './runtime.js';
 
@@ -38,7 +39,7 @@ async function request(path, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const rawMessage = payload?.error?.message || payload?.error || payload || 'Request failed';
+    const rawMessage = payload?.error?.message || payload?.error || payload || t('common.requestFailed');
     const error = new Error(localizeErrorMessage(rawMessage));
     error.status = response.status;
     error.payload = payload;
@@ -87,6 +88,12 @@ export default {
   },
   getUsers() {
     return request('/users');
+  },
+  getContacts(options = {}) {
+    return request('/contacts', options);
+  },
+  getUserProfile(userId, options = {}) {
+    return request(`/users/${encodeURIComponent(userId)}/profile`, options);
   },
   bootstrap() {
     return request('/bootstrap');
@@ -171,6 +178,12 @@ export default {
   },
   listDms() {
     return request('/dm');
+  },
+  blockUser(userId) {
+    return request(`/users/${Number(userId)}/block`, { method: 'PUT' });
+  },
+  unblockUser(userId) {
+    return request(`/users/${Number(userId)}/block`, { method: 'DELETE' });
   },
   uploadFile(file) {
     const form = new FormData();
@@ -329,4 +342,3 @@ export default {
     });
   }
 };
-

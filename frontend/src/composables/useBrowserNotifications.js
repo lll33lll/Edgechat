@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import { getNativeNotificationBridge } from "../capacitor-platform.ts";
 import { t } from "../i18n.js";
+import { messageMarkdownToPlainText } from "../message-markdown.ts";
 
 const STORAGE_KEY_PREFIX = "edgechat:browser-notifications";
 
@@ -152,11 +153,17 @@ export function useBrowserNotifications(options = {}) {
 		return nextMutedRooms.has(key);
 	}
 
+	function shouldNotifyRoom(event) {
+		const room = event?.room || event;
+		const needsAttention = Boolean(event?.mentionsMe || event?.replyToMe);
+		return !isRoomMuted(room) || needsAttention;
+	}
+
 	function notifyRoom(event) {
 		const room = event?.room || event;
 		const needsAttention = Boolean(event?.mentionsMe || event?.replyToMe);
 		void syncPermission();
-		if (!enabled.value || (isRoomMuted(room) && !needsAttention)) {
+		if (!enabled.value || !shouldNotifyRoom(event)) {
 			return false;
 		}
 
@@ -167,7 +174,10 @@ export function useBrowserNotifications(options = {}) {
 				: room.name || "EdgeChat";
 		const senderName =
 			event?.sender?.displayName || event?.sender?.username || "";
-		const attentionBody = [senderName, event?.contentPreview]
+			const attentionBody = [
+				senderName,
+				messageMarkdownToPlainText(event?.contentPreview || ""),
+			]
 			.filter(Boolean)
 			.join(": ");
 		const body = needsAttention
@@ -213,6 +223,7 @@ export function useBrowserNotifications(options = {}) {
 		toggleNotifications,
 		isRoomMuted,
 		toggleRoomMuted,
+		shouldNotifyRoom,
 		notifyRoom,
 	};
 }

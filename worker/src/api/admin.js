@@ -9,6 +9,7 @@ import {
   revokeRegistrationInvite
 } from '../data/registration-invites.js';
 import { getSiteSettings, updateSiteSettings } from '../data/site-settings.js';
+import { isR2ObjectUnavailableError } from '../data/uploaded-files.js';
 import { listAdminUsers, listStorageOwners } from '../data/users.js';
 import { ApiError } from '../errors.js';
 import { summarizeR2Objects } from '../storage-statistics.js';
@@ -75,8 +76,19 @@ export function registerAdminRoutes(app) {
       return errorResponse('站点名称不能为空');
     }
 
-    const site = await updateSiteSettings(c.env.DB, { siteName, siteIconUrl });
-    return c.json({ site });
+    try {
+      const site = await updateSiteSettings(c.env.DB, {
+        siteName,
+        siteIconUrl,
+        siteOrigin: new URL(c.req.url).origin
+      });
+      return c.json({ site });
+    } catch (error) {
+      if (isR2ObjectUnavailableError(error)) {
+        return errorResponse('站点图标文件不存在或正在清理，请重新上传');
+      }
+      throw error;
+    }
   });
 
   app.get('/api/admin/register-links', async (c) => {

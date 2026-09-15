@@ -1,5 +1,5 @@
 <script setup>
-import { Bell, BellOff, LayoutDashboard, LogOut, Settings, X } from '@lucide/vue';
+import { Bell, BellOff, ContactRound, LayoutDashboard, LogOut, MessageCircle, Settings, X } from '@lucide/vue';
 import { ref, toRef } from 'vue';
 import { useOverlayLifecycle } from '../../composables/useOverlayLifecycle.js';
 import { t } from '../../i18n.js';
@@ -12,10 +12,11 @@ const props = defineProps({
   showAdmin: { type: Boolean, default: false },
   notificationsEnabled: { type: Boolean, default: false },
   notificationLabel: { type: String, default: '' },
-  notificationDisabled: { type: Boolean, default: false }
+  notificationDisabled: { type: Boolean, default: false },
+  activeView: { type: String, default: 'chat' }
 });
 
-const emit = defineEmits(['close', 'settings', 'admin', 'notification', 'logout']);
+const emit = defineEmits(['close', 'chat', 'contacts', 'settings', 'admin', 'notification', 'logout']);
 const drawerEl = ref(null);
 
 useOverlayLifecycle({
@@ -50,6 +51,14 @@ useOverlayLifecycle({
           </header>
 
           <nav class="mobile-navigation-drawer__actions" :aria-label="t('mobile.appNavigation')">
+            <button type="button" :aria-current="activeView === 'chat' ? 'page' : undefined" @click="emit('chat')">
+              <MessageCircle :size="21" aria-hidden="true" />
+              <span>{{ t('nav.chats') }}</span>
+            </button>
+            <button type="button" :aria-current="activeView === 'contacts' ? 'page' : undefined" @click="emit('contacts')">
+              <ContactRound :size="21" aria-hidden="true" />
+              <span>{{ t('contacts.title') }}</span>
+            </button>
             <button type="button" @click="emit('settings')">
               <Settings :size="21" aria-hidden="true" />
               <span>{{ t('nav.personalSettings') }}</span>
@@ -181,6 +190,11 @@ useOverlayLifecycle({
   color: #8696a0;
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+.mobile-navigation-drawer__actions button[aria-current="page"] {
+  background: rgba(0, 128, 105, 0.1);
+  color: #008069;
 }
 
 .mobile-navigation-drawer__actions .mobile-navigation-drawer__danger {

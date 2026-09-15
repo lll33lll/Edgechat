@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { t } from "../../i18n.js";
+import { messageMarkdownToPlainText } from "../../message-markdown.ts";
 
 const props = defineProps({
 	reply: { type: Object, required: true },
@@ -15,7 +16,7 @@ const senderName = computed(() =>
 );
 const previewText = computed(() => {
 	if (props.reply.deleted) return t("messages.replyDeleted");
-	const content = String(props.reply.content || "").replace(/\s+/gu, " ").trim();
+	const content = messageMarkdownToPlainText(props.reply.content || "");
 	if (content) return content;
 	const attachment = props.reply.attachment;
 	if (attachment?.kind === "voice") return t("voice.fallback");

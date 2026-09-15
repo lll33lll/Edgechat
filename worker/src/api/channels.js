@@ -15,7 +15,10 @@ import {
   getChannelMembership
 } from '../room-access.js';
 import { ApiError } from '../errors.js';
-import { resolveAvatarKeyUpdate } from '../avatar-policy.js';
+import {
+  isR2ObjectUnavailableError,
+  resolveAvatarKeyUpdate
+} from '../avatar-policy.js';
 import { errorResponse, parseJsonRequest, publicFileUrl } from '../utils.js';
 import { activeUserSql } from '../user-status.js';
 import { hardDeleteChannel } from '../data/channel-deletion.ts';
@@ -244,6 +247,9 @@ export function registerChannelRoutes(app) {
         .bind(...binds, channelId)
         .run();
     } catch (error) {
+      if (isR2ObjectUnavailableError(error)) {
+        return errorResponse('头像文件不存在或正在清理，请重新上传');
+      }
       if (String(error.message).includes('UNIQUE')) {
         return errorResponse('群组名称已存在');
       }

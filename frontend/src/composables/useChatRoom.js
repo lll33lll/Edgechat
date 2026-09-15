@@ -15,6 +15,7 @@ export function useChatRoom({
 	activeRoom,
 	session,
 	error,
+	roomVisible = { value: true },
 	onRoomActivity = () => {},
 	onRoomAccessRevoked = () => {},
 	roomApi = api,
@@ -91,7 +92,7 @@ export function useChatRoom({
 	}
 
 	function applyActiveRoomActivity(message) {
-		if (!activeRoom.value || !message) {
+		if (!activeRoom.value || !message || !roomVisible.value) {
 			return;
 		}
 
@@ -232,6 +233,13 @@ export function useChatRoom({
 		messages.value = [];
 		pinnedMessage.value = null;
 		clearMessageHighlight();
+		loading.value = false;
+		disconnectSocket();
+	}
+
+	function pauseRoom() {
+		// 离开聊天内容时只终止在途读取与实时连接，草稿和现有消息留给返回后的恢复流程。
+		messageLoadGeneration += 1;
 		loading.value = false;
 		disconnectSocket();
 	}
@@ -451,6 +459,7 @@ export function useChatRoom({
 		loadMessages,
 		activateRoom,
 		deactivateRoom,
+		pauseRoom,
 		connectSocket,
 		disconnectSocket,
 			sendMessage,

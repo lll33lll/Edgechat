@@ -8,10 +8,12 @@ import {
   projectDemoDm,
   projectDemoUser,
   roomKey,
+  setDemoUserBlocked,
   storeDemoFile
 } from './state.js';
 
 import { demoMaintenanceReport } from './maintenance.ts';
+import { parseLocalUserId, validateBio } from '../../../shared/user-profile.ts';
 
 const DEMO_DELAY_MS = 90;
 
@@ -43,6 +45,7 @@ function sessionForUser(user) {
     userId: user.id,
     username: user.username,
     displayName: user.displayName,
+    bio: user.bio ?? '',
     avatarUrl: user.avatarUrl,
     isAdmin: Boolean(user.isAdmin),
     sessionVersion: 1
@@ -52,10 +55,19 @@ function sessionForUser(user) {
 function bootstrapPayload() {
   return {
     channels: demoState.channels.map(projectDemoChannel),
-    dms: demoState.dms.map(projectDemoDm),
+    dms: demoState.dms.map((dm) => projectDemoDm(dm, demoState.session.userId)),
     users: demoState.users
       .map(projectDemoUser)
       .filter((user) => Number(user.id) !== Number(demoState.session.userId) && !user.isDisabled)
+  };
+}
+
+function contactsPayload() {
+  return {
+    users: demoState.users
+      .map(projectDemoUser)
+      .filter((user) => !user.isDisabled)
+      .map(({ id, username, displayName, avatarUrl }) => ({ id, username, displayName, avatarUrl }))
   };
 }
 
@@ -229,6 +241,7 @@ export async function requestDemo(path, options = {}) {
     return { site: cloneDemo(demoState.site) };
   }
   if (method === 'GET' && pathname === '/auth/session') {
+    demoState.session = sessionForUser(findDemoUser(demoState.session.userId));
     return { session: cloneDemo(demoState.session) };
   }
   if (method === 'POST' && pathname === '/auth/login') {
@@ -249,18 +262,45 @@ export async function requestDemo(path, options = {}) {
   }
   if (method === 'PATCH' && pathname === '/me/profile') {
     const user = findDemoUser(demoState.session.userId);
-    if (body.displayName) {
-      user.displayName = String(body.displayName).trim();
-      demoState.session.displayName = user.displayName;
+    if (Object.hasOwn(body, 'displayName') && (typeof body.displayName !== 'string' || !body.displayName.trim())) {
+      fail('显示名称不能为空');
     }
-    if (body.avatarKey) {
+    let bio;
+    if (Object.hasOwn(body, 'bio')) {
+      try { bio = validateBio(body.bio); } catch (error) { fail(error.message); }
+    }
+    if (Object.hasOwn(body, 'displayName')) user.displayName = body.displayName.trim();
+    if (Object.hasOwn(body, 'bio')) user.bio = bio;
+    if (Object.hasOwn(body, 'avatarKey')) {
       user.avatarUrl = demoState.files.get(body.avatarKey) || '';
-      demoState.session.avatarUrl = user.avatarUrl;
     }
+    demoState.session = sessionForUser(user);
     return { session: cloneDemo(demoState.session) };
   }
   if (method === 'GET' && pathname === '/users') {
     return { users: bootstrapPayload().users };
+  }
+  if (method === 'GET' && pathname === '/contacts') {
+    return contactsPayload();
+  }
+  let match = pathname.match(/^\/users\/([^/]+)\/profile$/);
+  if (method === 'GET' && match) {
+    const id = parseLocalUserId(match[1]);
+    if (id === null) fail('用户 ID 无效');
+    const user = findDemoUser(id);
+    if (!user || user.deletedAt || projectDemoUser(user).isDisabled) fail('用户资料不可用', 404);
+    const { username, displayName, avatarUrl } = user;
+    return { profile: { id, username, displayName, avatarUrl, bio: user.bio ?? '' } };
+  }
+  match = pathname.match(/^\/users\/(\d+)\/block$/);
+  if ((method === 'PUT' || method === 'DELETE') && match) {
+    const userId = Number(match[1]);
+    if (userId === Number(demoState.session.userId) || !findDemoUser(userId)) {
+      fail('请选择有效用户');
+    }
+    const blockedByMe = method === 'PUT';
+    setDemoUserBlocked(demoState.session.userId, userId, blockedByMe);
+    return { blockedByMe };
   }
   if (method === 'GET' && pathname === '/bootstrap') {
     return bootstrapPayload();
@@ -274,7 +314,7 @@ export async function requestDemo(path, options = {}) {
     return { channel: createGroup(body) };
   }
 
-  let match = pathname.match(/^\/channels\/(\d+)\/join$/);
+  match = pathname.match(/^\/channels\/(\d+)\/join$/);
   if (method === 'POST' && match) {
     const channel = findDemoChannel(match[1]);
     if (!channel || channel.kind !== 'public') fail('公开群组不存在', 404);
@@ -357,7 +397,10 @@ export async function requestDemo(path, options = {}) {
   if (method === 'POST' && pathname === '/dm/open') {
     const user = findDemoUser(body.userId);
     if (!user) fail('用户不存在', 404);
-    let dm = demoState.dms.find((item) => Number(item.otherUser.id) === Number(user.id));
+    let dm = demoState.dms.find(
+      (item) => item.participantIds.includes(Number(demoState.session.userId))
+        && item.participantIds.includes(Number(user.id))
+    );
     if (!dm) {
       dm = {
         id: demoState.nextDmId++,
@@ -371,10 +414,10 @@ export async function requestDemo(path, options = {}) {
       demoState.dms.push(dm);
       demoState.messages[roomKey('dm', dm.id)] = [];
     }
-    return { dm: projectDemoDm(dm) };
+    return { dm: projectDemoDm(dm, demoState.session.userId) };
   }
   if (method === 'GET' && pathname === '/dm') {
-    return { dms: demoState.dms.map(projectDemoDm) };
+    return { dms: demoState.dms.map((dm) => projectDemoDm(dm, demoState.session.userId)) };
   }
   if (method === 'POST' && pathname === '/upload') {
     const file = body.get('file');

@@ -1,7 +1,7 @@
 import { decryptMessageContent, encryptMessageContent } from "../encryption.js";
 import { pickAttachment, publicFileUrl } from "../utils.js";
 import { normalizeMentionUserIds } from "./mentions.js";
-import { fileBelongsToUser } from "./uploaded-files.js";
+import { fileBelongsToUser, isR2ObjectUnavailableError } from "./uploaded-files.js";
 
 function toNullableNumber(value) {
 	const number = Number(value);
@@ -194,6 +194,22 @@ const MESSAGE_SELECT = `SELECT
 	 LEFT JOIN users u ON u.id = m.sender_id
 	 LEFT JOIN messages reply ON reply.id = m.reply_to_message_id
 	 LEFT JOIN users reply_user ON reply_user.id = reply.sender_id`;
+
+export async function getMessageDeletionTarget(db, messageId) {
+	const { results } = await db
+		.prepare(
+			`SELECT m.id, m.channel_id, m.sender_id, m.attachment_key,
+			        c.kind AS channel_kind
+			 FROM messages m
+			 JOIN channels c ON c.id = m.channel_id
+			 WHERE m.id = ?
+			   AND m.deleted_at IS NULL
+			 LIMIT 1`,
+		)
+		.bind(Number(messageId))
+		.all();
+	return results[0] || null;
+}
 
 export async function listMessages(env, roomId, before = null, limit = 30) {
 	const filters = ["m.channel_id = ?", "m.deleted_at IS NULL"];
@@ -454,6 +470,9 @@ async function persistMessage(env, {
 			.run();
 		return { message: await getMessageById(env, result.meta.last_row_id), created: true };
 	} catch (error) {
+		if (isR2ObjectUnavailableError(error)) {
+			throw new Error("Attachment is not available");
+		}
 		if (sourceMessageId && String(error?.message || error).includes("UNIQUE")) {
 			const existing = await getMessageBySource(env, source, sourceMessageId);
 			if (existing) {

@@ -41,6 +41,7 @@ test("login submission reads the values currently displayed by Android WebView",
 test("Capacitor Android CI builds an independent tested APK", () => {
 	const workflow = read("../.github/workflows/capacitor-android-ci.yml");
 	const gradleRunner = read("../capacitor/scripts/run-gradle.mjs");
+	const appBuild = read("../capacitor/android/app/build.gradle");
 	const viteConfig = read("../frontend/vite.capacitor.config.js");
 	assert.match(workflow, /actions\/setup-node@v5/);
 	assert.match(workflow, /node-version: "24"/);
@@ -60,6 +61,7 @@ test("Capacitor Android CI builds an independent tested APK", () => {
 		assert.match(gradleRunner, new RegExp(task.replaceAll(":", "\\:")));
 	}
 	assert.match(gradleRunner, /-Dorg\.gradle\.java\.home=/);
+	assert.match(appBuild, /rootProject\.file\('\.\.\/\.\.\/package\.json'\)/);
 	assert.match(viteConfig, /target: 'es2020'/);
 });
 

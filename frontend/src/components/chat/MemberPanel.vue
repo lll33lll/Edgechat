@@ -37,7 +37,7 @@ defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-member', 'delete-group']);
+const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-member', 'delete-group', 'open-profile']);
 </script>
 
 <template>
@@ -49,7 +49,7 @@ const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-memb
       </div>
 
       <div class="chat-member-panel__actions">
-        <UiBadge variant="secondary">{{ room.myRole || 'member' }}</UiBadge>
+        <UiBadge variant="secondary">{{ room.myRole === 'owner' ? t('members.owner') : t('members.member') }}</UiBadge>
         <UiButton v-if="canManage && !room.isGeneral" variant="destructive" size="sm" @click="emit('delete-group')">
           {{ t('group.delete') }}
         </UiButton>
@@ -61,7 +61,9 @@ const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-memb
 
     <div class="member-chip-list">
       <div v-for="member in members" :key="member.id" class="member-chip">
-        <UiAvatar :src="member.avatarUrl" :fallback="member.displayName" size="sm" />
+        <button type="button" class="profile-avatar-trigger" :aria-label="t('profile.view', { name: member.displayName })" @click="emit('open-profile', member)">
+          <UiAvatar :src="member.avatarUrl" :fallback="member.displayName" size="sm" />
+        </button>
         <div class="member-chip__text">
           <strong>{{ member.displayName }}</strong>
           <span>@{{ member.username }}</span>

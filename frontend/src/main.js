@@ -17,7 +17,9 @@ import './styles/admin.css';
 import './styles/chat.css';
 import './styles/chat-messages.css';
 import './styles/chat-attachments.css';
+import './styles/chat-theme.css';
 import { initLiquidGlass } from './liquid-glass.js';
+import { initializeI18n } from './i18n.js';
 
 // 应用自定义背景
 const customBg = localStorage.getItem('customBackground');
@@ -25,7 +27,7 @@ if (customBg) {
   document.body.style.background = customBg;
 }
 
-store.initialize().finally(() => {
+initializeI18n().then(() => store.initialize()).finally(() => {
   const app = createApp(App);
   app.use(router);
   app.mount('#app');

@@ -41,6 +41,7 @@ export function useActiveRoom({ activeRoom }) {
 			kind: "dm",
 			name: dm.name,
 			otherUser: dm.otherUser,
+			isBlockedByMe: Boolean(dm.isBlockedByMe),
 		};
 	}
 

@@ -1,5 +1,10 @@
-import { getOwnedUploadedFileMetadata } from "./data/uploaded-files.js";
+import {
+	getOwnedUploadedFileMetadata,
+	isR2ObjectUnavailableError,
+} from "./data/uploaded-files.js";
 import { ApiError } from "./errors.js";
+
+export { isR2ObjectUnavailableError };
 
 export async function resolveAvatarKeyUpdate(db, userId, payload) {
 	if (!Object.hasOwn(payload, "avatarKey")) {

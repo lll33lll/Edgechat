@@ -100,10 +100,10 @@ test("可见频道查询保持十二个数值身份绑定与直接关注 project
 	assert.match(capture.sql, /CASE WHEN c\.name = 'general' THEN 0 ELSE 1 END/);
 });
 
-test("DM 查询保持回复关注计数所需的七个数值身份绑定", async () => {
+test("DM 查询保持拉黑状态与回复关注计数所需的八个数值身份绑定", async () => {
 	const { db, capture } = createQueryDb([]);
 	await listUserDms(db, "12");
-	assert.deepEqual(capture.binds, [12, 12, 12, 12, 12, 12, 12]);
+	assert.deepEqual(capture.binds, [12, 12, 12, 12, 12, 12, 12, 12]);
 });
 
 test("后台 DM projection 保持参与者、计数与时间字段", async () => {

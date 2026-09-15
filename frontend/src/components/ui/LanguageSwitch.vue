@@ -1,30 +1,75 @@
 <script setup>
-import { computed } from 'vue';
-import { useI18n } from '../../i18n.js';
+import { Check, Languages } from '@lucide/vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { LOCALE_OPTIONS, useI18n } from '../../i18n.js';
 
-const { isEnglish, t, toggleLocale } = useI18n();
-const actionLabel = computed(() =>
-  isEnglish.value ? t('language.switchToChinese') : t('language.switchToEnglish')
-);
+const { locale, localeLoading, setLocale, t } = useI18n();
+const root = ref(null);
+const menuOpen = ref(false);
+
+function closeMenu() {
+  menuOpen.value = false;
+}
+
+async function toggleMenu() {
+  menuOpen.value = !menuOpen.value;
+  if (menuOpen.value) {
+    await nextTick();
+    root.value?.querySelector('[aria-current="true"]')?.focus();
+  }
+}
+
+async function selectLocale(value) {
+  if (value !== locale.value) await setLocale(value);
+  closeMenu();
+}
+
+function handleOutsidePointer(event) {
+  if (!root.value?.contains(event.target)) closeMenu();
+}
+
+onMounted(() => document.addEventListener('pointerdown', handleOutsidePointer));
+onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsidePointer));
 </script>
 
 <template>
-  <button
-    type="button"
-    class="language-switch"
-    :title="actionLabel"
-    :aria-label="actionLabel"
-    :data-tooltip="actionLabel"
-    @click="toggleLocale"
-  >
-    <span class="language-switch__glyph" aria-hidden="true">
-      <span class="language-switch__han">文</span>
-      <span class="language-switch__en">EN</span>
-    </span>
-  </button>
+  <div ref="root" class="language-switch-wrap" @keydown.esc="closeMenu">
+    <button
+      type="button"
+      class="language-switch"
+      :title="t('language.select')"
+      :aria-label="t('language.select')"
+      :aria-expanded="menuOpen"
+      aria-haspopup="menu"
+      @click="toggleMenu"
+    >
+      <Languages :size="21" aria-hidden="true" />
+    </button>
+
+    <div v-if="menuOpen" class="language-switch__menu" role="menu" :aria-label="t('language.select')">
+      <button
+        v-for="option in LOCALE_OPTIONS"
+        :key="option.value"
+        type="button"
+        class="language-switch__option"
+        role="menuitem"
+        :aria-current="locale === option.value ? 'true' : undefined"
+        :disabled="localeLoading"
+        @click="selectLocale(option.value)"
+      >
+        <span :lang="option.value">{{ option.label }}</span>
+        <Check v-if="locale === option.value" :size="16" aria-hidden="true" />
+      </button>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.language-switch-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
 .language-switch {
   width: 44px;
   min-width: 44px;
@@ -56,45 +101,45 @@ const actionLabel = computed(() =>
   outline-offset: 2px;
 }
 
-.language-switch__glyph {
-  position: relative;
-  width: 29px;
-  height: 24px;
-  display: block;
-}
-
-.language-switch__glyph::after {
-  content: '';
+.language-switch__menu {
   position: absolute;
-  left: 13px;
-  top: 11px;
-  width: 14px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.38;
-  transform: rotate(-38deg);
-  transform-origin: center;
-}
-
-.language-switch__han,
-.language-switch__en {
-  position: absolute;
-  line-height: 1;
-  letter-spacing: 0;
-}
-
-.language-switch__han {
-  left: 0;
-  top: 0;
-  font-size: 16px;
-  font-weight: 750;
-}
-
-.language-switch__en {
+  z-index: 120;
+  top: calc(100% + 8px);
   right: 0;
-  bottom: 0;
-  font-size: 9px;
-  font-weight: 800;
+  width: 152px;
+  padding: 6px;
+  border: 1px solid rgba(88, 107, 124, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 12px 32px rgba(27, 44, 56, 0.16);
+}
+
+.language-switch__option {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1f292e;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-switch__option:hover,
+.language-switch__option:focus-visible {
+  outline: none;
+  background: rgba(45, 156, 151, 0.1);
+}
+
+.language-switch__option[aria-current='true'] {
+  color: #08766a;
+  font-weight: 650;
 }
 
 @media (prefers-reduced-motion: reduce) {

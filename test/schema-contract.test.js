@@ -30,11 +30,13 @@ test("deployment and runtime inspect only application tables, never protected D1
 
 test("manifest is generated from executable SQLite schema and includes future tables/columns/indexes/triggers", async () => {
   const manifest = await generateSchemaManifest();
+  const project = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const schema = readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
   const db = new SQL.Database();
   db.exec(schema);
   db.exec("CREATE TABLE future_probe (id INTEGER PRIMARY KEY, label TEXT); CREATE INDEX future_probe_label ON future_probe(label); CREATE TRIGGER future_probe_trigger AFTER INSERT ON future_probe BEGIN SELECT 1; END;");
   const artifacts = await collectSchemaArtifacts(async (sql) => rows(db, sql));
+  assert.equal(manifest.version, project.version);
   assert.ok(manifest.artifacts.includes("table:users"));
   assert.ok(artifacts.has("table:future_probe"));
   assert.ok(artifacts.has("column:future_probe.label"));
@@ -140,8 +142,10 @@ test("schema contract identifies missing ledger, migration, ahead, and checksum 
 
 test("demo maintenance report uses the generated manifest and matches the production check ids", () => {
   const report = demoMaintenanceReport();
+  const project = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(report.demo, true);
   assert.equal(report.status, "ok");
+  assert.equal(report.version, `v${project.version}`);
   assert.equal(report.expectedMigration, D1_MIGRATIONS.at(-1).id);
   assert.deepEqual(report.checks.map((check) => check.id), ["d1", "schema", "sessions", "files", "channelRoom", "userInbox", "scheduler", "environment"]);
   assert.equal(report.checks.find((check) => check.id === "schema").schema.status, "ok");

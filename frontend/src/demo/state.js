@@ -56,16 +56,44 @@ export function projectDemoChannel(channel) {
   return cloneDemo(projection);
 }
 
-export function projectDemoDm(dm) {
-  if (!dm) return null;
-  return {
-    id: dm.id,
-    kind: 'dm',
-    otherUser: projectDemoUser(dm.otherUser),
-    lastMessageAt: dm.lastMessageAt,
-    unreadCount: dm.unreadCount,
-		mentionUnreadCount: Number(dm.mentionUnreadCount || 0)
-  };
+export function projectDemoDm(dm, viewerUserId = demoState.session.userId) {
+	if (!dm) return null;
+	const peerUserId = dm.participantIds.find(
+		(userId) => Number(userId) !== Number(viewerUserId)
+	);
+	const otherUser = findDemoUser(peerUserId) || dm.otherUser;
+	return {
+		id: dm.id,
+		kind: 'dm',
+		otherUser: projectDemoUser(otherUser),
+		lastMessageAt: dm.lastMessageAt,
+		unreadCount: dm.unreadCount,
+		mentionUnreadCount: Number(dm.mentionUnreadCount || 0),
+		isBlockedByMe: isDemoUserBlocked(viewerUserId, otherUser.id)
+	};
+}
+
+function userBlockKey(blockerId, blockedId) {
+	return `${Number(blockerId)}:${Number(blockedId)}`;
+}
+
+export function isDemoUserBlocked(blockerId, blockedId) {
+	return demoState.userBlocks.has(userBlockKey(blockerId, blockedId));
+}
+
+export function setDemoUserBlocked(blockerId, blockedId, blocked) {
+	const key = userBlockKey(blockerId, blockedId);
+	if (blocked) demoState.userBlocks.add(key);
+	else demoState.userBlocks.delete(key);
+}
+
+export function getDemoDirectMessageBlockStatus(dmId, senderId) {
+	const dm = demoState.dms.find((item) => Number(item.id) === Number(dmId));
+	const peerId = dm?.participantIds.find((userId) => Number(userId) !== Number(senderId));
+	return {
+		blockedBySender: Boolean(peerId && isDemoUserBlocked(senderId, peerId)),
+		blockedByPeer: Boolean(peerId && isDemoUserBlocked(peerId, senderId))
+	};
 }
 
 export function getDemoMembers(channel) {

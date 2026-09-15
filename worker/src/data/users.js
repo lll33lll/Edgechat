@@ -10,6 +10,15 @@ function mapUserSummary(row) {
 	};
 }
 
+export async function getUserProfile(db, userId) {
+	const { results } = await db.prepare(
+		`SELECT id, username, display_name, avatar_key, bio
+		 FROM users WHERE id = ? AND deleted_at IS NULL AND ${activeUserSql()} LIMIT 1`,
+	).bind(userId).all();
+	const row = results[0];
+	return row ? { ...mapUserSummary(row), bio: row.bio } : null;
+}
+
 function mapAdminUser(row) {
 	return {
 		...mapUserSummary(row),
@@ -58,6 +67,19 @@ export async function listActiveUsers(db, excludeUserId) {
 			 ORDER BY display_name ASC`,
 		)
 		.bind(Number(excludeUserId))
+		.all();
+	return results.map(mapUserSummary);
+}
+
+export async function listContacts(db) {
+	const { results } = await db
+		.prepare(
+			`SELECT id, username, display_name, avatar_key
+			 FROM users
+			 WHERE deleted_at IS NULL
+			   AND ${activeUserSql()}
+			 ORDER BY display_name ASC, username ASC, id ASC`,
+		)
 		.all();
 	return results.map(mapUserSummary);
 }

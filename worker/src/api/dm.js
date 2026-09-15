@@ -1,5 +1,6 @@
 import { ensureDmChannel } from '../data/dm-provisioning.js';
 import { listAdminDms, listUserDms } from '../data/dm-queries.js';
+import { getUserBlockStatus } from '../data/user-blocks.ts';
 import { errorResponse, parseJsonRequest } from '../utils.js';
 import { activeUserSql } from '../user-status.js';
 
@@ -34,7 +35,10 @@ export function registerDmRoutes(app) {
       return errorResponse('目标用户不存在', 404);
     }
 
-    const channel = await ensureDmChannel(c.env.DB, session.userId, targetUserId);
+    const [channel, blockStatus] = await Promise.all([
+      ensureDmChannel(c.env.DB, session.userId, targetUserId),
+      getUserBlockStatus(c.env.DB, session.userId, targetUserId)
+    ]);
     return c.json({
       dm: {
         id: Number(channel.id),
@@ -47,7 +51,8 @@ export function registerDmRoutes(app) {
           avatarUrl: targetUser.results[0].avatar_key
             ? `/files/${encodeURIComponent(targetUser.results[0].avatar_key)}`
             : ''
-        }
+        },
+        isBlockedByMe: blockStatus.blockedByMe
       }
     });
   });

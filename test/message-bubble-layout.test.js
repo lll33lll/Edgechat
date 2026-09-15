@@ -14,6 +14,10 @@ const replyPreview = readFileSync(
 	new URL("../frontend/src/components/chat/MessageReplyPreview.vue", import.meta.url),
 	"utf8",
 ).replaceAll("\r\n", "\n");
+const messageMarkdown = readFileSync(
+	new URL("../frontend/src/components/chat/MessageMarkdown.vue", import.meta.url),
+	"utf8",
+).replaceAll("\r\n", "\n");
 
 function getStyleRule(selector) {
 	const marker = `${selector} {`;
@@ -35,7 +39,7 @@ test("短文本消息为右下角时间戳预留末行空间", () => {
 	);
 
 	const bubble = getStyleRule(".message-bubble");
-	assert.match(bubble, /padding:\s*6px 10px 7px;/);
+	assert.match(bubble, /padding:\s*10px 12px 8px;/);
 
 	const attachmentBubble = getStyleRule(".message-bubble--with-attachment");
 	assert.match(attachmentBubble, /padding-bottom:\s*20px;/);
@@ -44,21 +48,22 @@ test("短文本消息为右下角时间戳预留末行空间", () => {
 	assert.match(time, /position:\s*absolute;/);
 	assert.match(time, /white-space:\s*nowrap;/);
 
-	const reserve = getStyleRule(
-		".message-bubble:not(.message-bubble--with-attachment) p::after",
+	assert.match(
+		messageMarkdown,
+		/\.message-markdown::after\s*{[^}]*display:\s*inline-block;[^}]*width:\s*3\.5em;/s,
 	);
-	assert.match(reserve, /display:\s*inline-block;/);
-	assert.match(reserve, /width:\s*3\.5em;/);
 });
 
 test("非本人消息在气泡前显示圆形发送者头像", () => {
-	assert.match(chatPage, /<UiAvatar\s+v-if="!isOwnMessage\(msg\)"/);
+	assert.match(chatPage, /<button\s+v-if="!isOwnMessage\(msg\)"/);
+	assert.match(chatPage, /class="profile-avatar-trigger message-avatar-trigger"/);
+	assert.match(chatPage, /<UiAvatar class="message-avatar"/);
 	assert.match(chatPage, /:src="msg\.sender\.avatarUrl"/);
 	assert.match(chatPage, /:fallback="msg\.sender\.displayName"/);
 
 	const row = getStyleRule(".message-row");
 	assert.match(row, /align-items:\s*flex-end;/);
-	assert.match(row, /gap:\s*8px;/);
+	assert.match(row, /gap:\s*10px;/);
 
 	const avatar = getStyleRule(".message-avatar");
 	assert.match(avatar, /width:\s*34px;/);

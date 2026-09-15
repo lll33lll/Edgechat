@@ -73,6 +73,34 @@ test("消息删除统一完成权限校验、持久化与实时删除 packet", a
 	});
 });
 
+test("消息删除后会回收不再引用的附件", async () => {
+	const cleaned = [];
+	const remove = createMessageDeletion({
+		async authorize() {
+			return { ok: true };
+		},
+		async getDeletionTarget() {
+			return { attachment_key: "7/voice.webm" };
+		},
+		async persistDeletion() {
+			return true;
+		},
+		async cleanupAttachments(env, keys) {
+			cleaned.push({ env, keys });
+		},
+	});
+	const env = { DB: {}, FILES: {} };
+
+	const result = await remove(
+		env,
+		{ room: { id: 4, kind: "private" }, principal: { userId: 7 } },
+		{ messageId: 9 },
+	);
+	await result.cleanupPromise;
+
+	assert.deepEqual(cleaned, [{ env, keys: ["7/voice.webm"] }]);
+});
+
 test("消息删除向客户端收敛无权限、无效参数与重复删除错误", async () => {
 	const denied = createMessageDeletion({
 		async authorize() {

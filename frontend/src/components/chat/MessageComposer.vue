@@ -1,8 +1,8 @@
 <script setup>
-import { LoaderCircle, Mic, Paperclip, Send, Trash2, X } from "@lucide/vue";
-import { computed, nextTick, ref, watch } from "vue";
+import { ChevronDown, LoaderCircle, Mic, Paperclip, Send, Trash2, Type, X } from "@lucide/vue";
+import { computed, markRaw, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { isCapacitorAndroid, openNativeAppSettings, pickNativeFile } from "../../capacitor-platform.ts";
-import { t } from "../../i18n.js";
+import { getLocale, t } from "../../i18n.js";
 import { useVoiceRecorder } from "../../composables/useVoiceRecorder.ts";
 import { formatVoiceDuration } from "../../voice-message.js";
 import UiTextarea from "../ui/Textarea.vue";
@@ -39,6 +39,10 @@ const props = defineProps({
 		type: Object,
 		default: null,
 	},
+	contextKey: {
+		type: String,
+		default: "",
+	},
 });
 
 const emit = defineEmits([
@@ -59,6 +63,15 @@ const pickerError = ref("");
 const showPermissionSettings = ref(false);
 const finishingRecording = ref(false);
 const composing = ref(false);
+const richEditor = ref(null);
+const richEditorComponent = shallowRef(null);
+const richEditorRuntime = shallowRef(null);
+const richEditorOpen = ref(false);
+const richEditorReady = ref(false);
+const richEditorLoading = ref(false);
+const richEditorLoadError = ref("");
+let richEditorLoadGeneration = 0;
+let componentAlive = true;
 const { recording, starting, elapsedMs, liveWaveform, start, finish, cancel } = useVoiceRecorder();
 const filteredMentions = computed(() => {
 	const query = mentionQuery.value.toLocaleLowerCase();
@@ -114,12 +127,76 @@ function handleKeydown(event) {
 		if (sendDisabled.value) {
 			return;
 		}
-		emit("send");
+			void requestSend();
 	}
 	if (event.key === "Escape" && props.replyingTo) {
 		event.preventDefault();
 		emit("cancel-reply");
 	}
+}
+
+function cancelRichEditorLoad() {
+	richEditorLoadGeneration += 1;
+	richEditorLoading.value = false;
+}
+
+async function openRichEditor() {
+	if (richEditorOpen.value || richEditorLoading.value || props.disabled) return;
+	const generation = ++richEditorLoadGeneration;
+	richEditorLoading.value = true;
+	richEditorLoadError.value = "";
+	closeMentionMenu();
+
+	try {
+		const [runtimeModule, componentModule] = await Promise.all([
+			import("../../vditor-runtime.ts"),
+			import("./VditorComposerEditor.vue"),
+		]);
+		const runtime = await runtimeModule.loadVditorRuntime(getLocale());
+		if (!componentAlive || generation !== richEditorLoadGeneration) return;
+		richEditorRuntime.value = markRaw(runtime);
+		richEditorComponent.value = markRaw(componentModule.default);
+		richEditorReady.value = false;
+		richEditorOpen.value = true;
+	} catch {
+		if (!componentAlive || generation !== richEditorLoadGeneration) return;
+		richEditorLoadError.value = t("composer.richEditorLoadFailed");
+	} finally {
+		if (componentAlive && generation === richEditorLoadGeneration) {
+			richEditorLoading.value = false;
+		}
+	}
+}
+
+function collapseRichEditor({ restoreFocus = true } = {}) {
+	richEditorLoadGeneration += 1;
+	richEditorLoading.value = false;
+	richEditor.value?.syncValue();
+	richEditorOpen.value = false;
+	richEditorReady.value = false;
+	if (restoreFocus) nextTick(() => textarea.value?.focus());
+}
+
+function toggleRichEditor() {
+	if (richEditorLoading.value) {
+		cancelRichEditorLoad();
+		return;
+	}
+	if (richEditorOpen.value) collapseRichEditor();
+	else void openRichEditor();
+}
+
+function handleRichEditorInitializationError() {
+	collapseRichEditor({ restoreFocus: false });
+	richEditorLoadError.value = t("composer.richEditorLoadFailed");
+}
+
+async function requestSend() {
+	if (richEditorOpen.value) {
+		richEditor.value?.syncValue();
+		await nextTick();
+	}
+	if (!sendDisabled.value) emit("send");
 }
 
 function syncMentionQuery(event) {
@@ -184,6 +261,7 @@ async function startVoiceRecording() {
 	recordingError.value = "";
 	showPermissionSettings.value = false;
 	closeMentionMenu();
+	richEditor.value?.syncValue();
 	try {
 		await start();
 	} catch (error) {
@@ -237,8 +315,24 @@ async function sendVoiceRecording() {
 
 defineExpose({
 	focus() {
-		textarea.value?.focus();
+		if (richEditorOpen.value) richEditor.value?.focus();
+		else textarea.value?.focus();
 	},
+});
+
+watch(
+	() => props.contextKey,
+	() => {
+		richEditorLoadError.value = "";
+		if (richEditorOpen.value) collapseRichEditor({ restoreFocus: false });
+		else cancelRichEditorLoad();
+	},
+);
+
+onBeforeUnmount(() => {
+	componentAlive = false;
+	richEditorLoadGeneration += 1;
+	richEditor.value?.syncValue();
 });
 </script>
 
@@ -272,7 +366,7 @@ defineExpose({
 					<X :size="20" aria-hidden="true" />
 				</button>
 			</div>
-		<div v-if="mentionMenuOpen" class="mention-menu" role="listbox">
+			<div v-if="mentionMenuOpen && !richEditorOpen" class="mention-menu" role="listbox">
 			<button
 				v-for="(member, index) in filteredMentions"
 				:key="member.id"
@@ -295,7 +389,22 @@ defineExpose({
 				</span>
 			</button>
 		</div>
-				<div v-if="recording" class="composer-recording" :aria-label="t('voice.recording')">
+			<div v-if="richEditorLoading" class="composer-editor-status" role="status">
+				<LoaderCircle :size="16" class="composer-spinner" aria-hidden="true" />
+				<span>{{ t('composer.richEditorLoading') }}</span>
+				<button type="button" @click="cancelRichEditorLoad">{{ t('common.cancel') }}</button>
+			</div>
+			<div v-else-if="richEditorLoadError" class="composer-editor-status composer-editor-status--error" role="alert">
+				<span>{{ richEditorLoadError }}</span>
+				<button type="button" @click="openRichEditor">{{ t('common.retry') }}</button>
+			</div>
+			<input
+				ref="fileInput"
+				type="file"
+				class="composer-file-input"
+				@change="handleFileSelected"
+			/>
+			<div v-if="recording" class="composer-recording" :aria-label="t('voice.recording')">
 					<button type="button" class="composer-btn composer-recording__cancel" :disabled="finishingRecording" :title="t('voice.cancel')" :aria-label="t('voice.cancel')" @click="cancelVoiceRecording">
 					<Trash2 :size="20" aria-hidden="true" />
 				</button>
@@ -312,14 +421,70 @@ defineExpose({
 						<span>{{ t('chat.send') }}</span>
 				</button>
 			</div>
+			<div v-else-if="richEditorOpen" class="composer-rich-editor">
+				<component
+					:is="richEditorComponent"
+					ref="richEditor"
+					:model-value="modelValue"
+					:disabled="disabled || starting"
+					:mention-candidates="mentionCandidates"
+					:placeholder="t('chat.messagePlaceholder')"
+					:runtime="richEditorRuntime"
+					@update:model-value="emit('update:modelValue', $event)"
+					@ready="richEditorReady = true"
+					@initialization-error="handleRichEditorInitializationError"
+					@send="requestSend"
+				/>
+				<div v-if="!richEditorReady" class="composer-editor-initializing" role="status">
+					<LoaderCircle :size="17" class="composer-spinner" aria-hidden="true" />
+					{{ t('composer.richEditorInitializing') }}
+				</div>
+				<div class="composer-rich-editor__actions">
+					<button
+						type="button"
+						class="composer-btn composer-rich-editor__attachment"
+						:disabled="disabled || starting"
+						:title="t('chat.addAttachment')"
+						:aria-label="t('chat.addAttachment')"
+						@click="openPicker"
+					>
+						<Paperclip :size="20" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="composer-btn composer-btn--active"
+						:title="t('composer.collapseRichEditor')"
+						:aria-label="t('composer.collapseRichEditor')"
+						@click="collapseRichEditor()"
+					>
+						<ChevronDown :size="21" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="composer-btn composer-voice"
+						:disabled="disabled || sending || starting"
+						:title="t('voice.record')"
+						:aria-label="t('voice.record')"
+						@click="startVoiceRecording"
+					>
+						<Mic :size="21" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="composer-send"
+						:disabled="sendDisabled"
+						:title="t('chat.sendMessage')"
+						:aria-label="t('chat.sendMessage')"
+						@click="requestSend"
+					>
+						<LoaderCircle v-if="sending" :size="20" class="composer-spinner" aria-hidden="true" />
+						<Send v-else :size="20" aria-hidden="true" />
+						<span>{{ t('chat.send') }}</span>
+					</button>
+				</div>
+			</div>
 			<div v-else class="composer-row">
-			<input
-				ref="fileInput"
-				type="file"
-				class="composer-file-input"
-				@change="handleFileSelected"
-			/>
-				<button
+					<button
 					type="button"
 				class="composer-btn"
 				:disabled="disabled || starting"
@@ -327,8 +492,21 @@ defineExpose({
 				:aria-label="t('chat.addAttachment')"
 				@click="openPicker"
 			>
-				<Paperclip :size="20" aria-hidden="true" />
-			</button>
+					<Paperclip :size="20" aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class="composer-btn"
+					:class="{ 'composer-btn--active': richEditorLoading }"
+					:disabled="disabled || starting"
+					:aria-busy="richEditorLoading"
+					:title="richEditorLoading ? t('composer.cancelRichEditorLoading') : t('composer.openRichEditor')"
+					:aria-label="richEditorLoading ? t('composer.cancelRichEditorLoading') : t('composer.openRichEditor')"
+					@click="toggleRichEditor"
+				>
+					<LoaderCircle v-if="richEditorLoading" :size="20" class="composer-spinner" aria-hidden="true" />
+					<Type v-else :size="20" aria-hidden="true" />
+				</button>
 			<UiTextarea
 				ref="textarea"
 				:model-value="modelValue"
@@ -363,7 +541,7 @@ defineExpose({
 				:disabled="sendDisabled"
 				:title="t('chat.sendMessage')"
 				:aria-label="t('chat.sendMessage')"
-				@click="emit('send')"
+					@click="requestSend"
 			>
 				<LoaderCircle v-if="sending" :size="20" class="composer-spinner" aria-hidden="true" />
 				<Send v-else :size="20" aria-hidden="true" />
@@ -380,10 +558,10 @@ defineExpose({
 	flex-shrink: 0;
 	min-width: 0;
 	margin: auto 0 0;
-	padding: 10px 16px;
-	border-top: 1px solid #e9edef;
+	padding: 16px 24px 20px;
+	border-top: 1px solid var(--chat-line);
 	border-radius: 0;
-	background: #f0f2f5;
+	background: var(--chat-canvas);
 }
 
 .composer-attachment {
@@ -393,7 +571,7 @@ defineExpose({
 
 .composer-reply {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 32px;
+	grid-template-columns: minmax(0, 1fr) 44px;
 	align-items: center;
 	gap: 8px;
 	margin-bottom: 8px;
@@ -403,13 +581,13 @@ defineExpose({
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 32px;
+	width: 44px;
+	height: 44px;
 	padding: 0;
 	border: 0;
 	border-radius: 50%;
 	background: transparent;
-	color: #667781;
+	color: var(--chat-muted);
 	cursor: pointer;
 }
 
@@ -420,9 +598,36 @@ defineExpose({
 
 .composer-error {
 	margin-bottom: 8px;
-	color: #dc2626;
+	color: var(--chat-danger);
 	font-size: 12px;
 	text-align: center;
+}
+
+.composer-editor-status {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 28px;
+	margin-bottom: 8px;
+	color: var(--chat-muted);
+	font-size: 12px;
+}
+
+.composer-editor-status--error {
+	color: var(--chat-danger);
+}
+
+.composer-editor-status button {
+	min-height: 44px;
+	padding: 2px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: rgba(0, 128, 105, 0.1);
+	color: var(--chat-accent);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
 }
 
 .composer-settings {
@@ -444,7 +649,7 @@ defineExpose({
 	justify-content: space-between;
 	gap: 8px;
 	margin-bottom: 8px;
-	color: #54656f;
+	color: var(--chat-muted);
 	font-size: 14px;
 }
 
@@ -457,9 +662,9 @@ defineExpose({
 	max-height: 280px;
 	padding: 6px;
 	overflow-y: auto;
-	border: 1px solid #dfe5e2;
+	border: 1px solid var(--chat-line);
 	border-radius: 8px;
-	background: #ffffff;
+	background: var(--chat-paper);
 	box-shadow: 0 10px 28px rgba(17, 27, 33, 0.14);
 }
 
@@ -495,13 +700,13 @@ defineExpose({
 }
 
 .mention-option__label strong {
-	color: #111b21;
+	color: var(--chat-ink);
 	font-size: 14px;
 	font-weight: 600;
 }
 
 .mention-option__label small {
-	color: #667781;
+	color: var(--chat-muted);
 	font-size: 12px;
 }
 
@@ -510,6 +715,48 @@ defineExpose({
 	align-items: flex-end;
 	gap: 8px;
 	min-width: 0;
+	padding: 8px;
+	border: 1px solid var(--chat-line);
+	border-radius: 24px;
+	background: var(--chat-paper);
+	box-shadow: var(--chat-shadow);
+}
+
+/* 整体焦点边框让输入位置清楚可见，不改变面板大小。 */
+.composer-row:focus-within {
+	border-color: var(--chat-accent);
+}
+
+.composer-rich-editor {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding: 8px;
+	border: 1px solid var(--chat-line);
+	border-radius: 16px;
+	background: var(--chat-paper);
+}
+
+.composer-editor-initializing {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	min-height: 32px;
+	color: var(--chat-muted);
+	font-size: 12px;
+}
+
+.composer-rich-editor__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	min-width: 0;
+}
+
+.composer-rich-editor__attachment {
+	margin-right: auto;
 }
 
 .composer-recording {
@@ -522,7 +769,7 @@ defineExpose({
 
 .composer-recording__cancel {
 	grid-row: 1 / 3;
-	color: #d93025;
+	color: var(--chat-danger);
 }
 
 .composer-recording__status {
@@ -530,7 +777,7 @@ defineExpose({
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
-	color: #54656f;
+	color: var(--chat-muted);
 	font-size: 12px;
 }
 
@@ -543,13 +790,13 @@ defineExpose({
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background: #d93025;
+	background: var(--chat-danger);
 	animation: recording-pulse 1.2s ease-in-out infinite;
 }
 
 .composer-recording__time {
 	min-width: 38px;
-	color: #111b21;
+	color: var(--chat-ink);
 	font-size: 14px;
 	font-variant-numeric: tabular-nums;
 }
@@ -569,11 +816,11 @@ defineExpose({
 	min-width: 2px;
 	max-width: 4px;
 	border-radius: 2px;
-	background: #25a36f;
+	background: var(--chat-accent);
 }
 
 .composer-voice {
-	color: #008069;
+	color: var(--chat-accent);
 }
 
 @keyframes recording-pulse {
@@ -609,13 +856,18 @@ defineExpose({
 }
 
 .composer-btn {
-	color: #54656f;
+	color: var(--chat-muted);
 	transition: background 150ms, color 150ms;
+}
+
+.composer-btn--active {
+	background: rgba(0, 128, 105, 0.1);
+	color: var(--chat-accent);
 }
 
 .composer-btn:hover:not(:disabled) {
 	background: rgba(0, 0, 0, 0.05);
-	color: #111b21;
+	color: var(--chat-ink);
 }
 
 .composer-send {
@@ -623,9 +875,9 @@ defineExpose({
 	min-width: 72px;
 	gap: 6px;
 	padding: 0 12px;
-	border-radius: 12px;
-	background: #008069;
-	color: #ffffff;
+	border-radius: 22px;
+	background: var(--chat-accent);
+	color: var(--chat-paper);
 	font: inherit;
 	font-size: 14px;
 	font-weight: 600;
@@ -634,7 +886,7 @@ defineExpose({
 }
 
 .composer-send:hover:not(:disabled) {
-	background: #006b58;
+	background: var(--chat-accent-hover);
 }
 
 .composer-btn:active:not(:disabled) {
@@ -642,13 +894,16 @@ defineExpose({
 }
 
 .composer-send:active:not(:disabled) {
-	background: #005846;
+	background: var(--chat-accent-pressed);
 }
 
 .composer-btn:focus-visible,
+.composer-reply__cancel:focus-visible,
+.composer-editor-status button:focus-visible,
+.mention-option:focus-visible,
 .composer-send:focus-visible,
 .composer-settings:focus-visible {
-	outline: 2px solid #008069;
+	outline: 2px solid var(--chat-accent);
 	outline-offset: 2px;
 }
 
@@ -659,8 +914,8 @@ defineExpose({
 
 .composer-send:disabled {
 	cursor: not-allowed;
-	background: #d9e2de;
-	color: #60716a;
+	background: var(--chat-disabled);
+	color: var(--chat-muted);
 }
 
 .composer-input {
@@ -672,14 +927,15 @@ defineExpose({
 :deep(.composer-input.ui-textarea) {
 	width: 100%;
 	min-width: 0;
-	min-height: 40px;
-	padding: 10px 16px;
+	min-height: 44px;
+	padding: 11px 4px;
 	border: none;
 	border-radius: 8px;
-	background: #ffffff;
+	background: var(--chat-paper);
 	box-shadow: none;
-	color: #111b21;
-	font-size: 15px;
+	color: var(--chat-ink);
+	font-size: 16px;
+	line-height: 1.4;
 	resize: none;
 }
 
@@ -691,7 +947,7 @@ defineExpose({
 
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue deep selector */
 :deep(.composer-input.ui-textarea::placeholder) {
-	color: #8696a0;
+	color: var(--chat-subtle);
 }
 
 @media (max-width: 960px) {
@@ -708,7 +964,13 @@ defineExpose({
 
 		.composer-row {
 			gap: 4px;
+			padding: 4px;
+			border-radius: 20px;
 		}
+
+	.composer-rich-editor__actions {
+		gap: 4px;
+	}
 
 		.composer-recording {
 			gap: 4px 8px;
@@ -722,9 +984,23 @@ defineExpose({
 	/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue deep selector */
 	:deep(.composer-input.ui-textarea) {
 		min-height: 44px;
-		padding: 11px 12px;
+		padding: 11px 4px;
 		font-size: 16px;
 	}
+}
+
+@media (max-width: 480px) {
+	/* 窄屏输入单独占一行，防止四个工具按钮把 320px 的文字区挤到不可用。 */
+	.composer-row {
+		display: grid;
+		grid-template-columns: 44px 44px minmax(0, 1fr) auto;
+		gap: 4px;
+	}
+	.composer-input { grid-column: 1 / -1; grid-row: 1; }
+	.composer-row .composer-voice { justify-self: end; }
+	/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue deep selector */
+	:deep(.composer-input.ui-textarea) { padding: 11px 12px; }
+	.mention-menu { left: 8px; right: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

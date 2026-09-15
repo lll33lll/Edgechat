@@ -28,7 +28,10 @@ test("个人资料接口清除头像时同步数据库与会话", async () => {
 				return {
 					bind(...binds) {
 						return {
-							async all() {
+								async all() {
+									if (sql.includes("SELECT id, username, display_name, avatar_key, bio")) {
+										return { results: [{ id: 7, username: "alice", display_name: "Alice", avatar_key: null, bio: "" }] };
+									}
 								if (sql.includes("SELECT username, is_disabled")) {
 									return {
 										results: [{

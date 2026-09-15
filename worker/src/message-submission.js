@@ -1,6 +1,7 @@
 import { insertMessage, insertMessageIdempotent } from "./data/messages.js";
 import { resolveMessageMentionUserIds } from "./data/mentions.js";
 import { resolveMessageReply } from "./data/replies.js";
+import { getDirectMessageBlockStatus } from "./data/user-blocks.ts";
 
 export class MessageSubmissionError extends Error {
 	constructor(message, code = "invalid_request", status = 400) {
@@ -15,9 +16,31 @@ export function createMessageSubmission({
 	persistMessage = insertMessage,
 	resolveMentions = resolveMessageMentionUserIds,
 	resolveReply = resolveMessageReply,
+	resolveDmBlockStatus = getDirectMessageBlockStatus,
 } = {}) {
 	return async function submitRoomMessage(env, meta, payload) {
 		try {
+			if (meta.room.kind === "dm") {
+				const blockStatus = await resolveDmBlockStatus(
+					env.DB,
+					Number(meta.room.id),
+					Number(meta.principal.userId),
+				);
+				if (blockStatus.blockedByPeer) {
+					throw new MessageSubmissionError(
+						"发送被拒，你已经被拉黑",
+						"blocked_by_recipient",
+						403,
+					);
+				}
+				if (blockStatus.blockedBySender) {
+					throw new MessageSubmissionError(
+						"请先解除拉黑再发送",
+						"recipient_blocked",
+						403,
+					);
+				}
+			}
 			const [mentionUserIds, reply] = await Promise.all([
 				resolveMentions(env.DB, {
 					channelId: meta.room.id,
@@ -55,6 +78,15 @@ export function createMessageSubmission({
 				packet: JSON.stringify({ protocolVersion: 1, type: "message", message }),
 			};
 		} catch (error) {
+			if (
+				error?.message === "Invalid attachment" ||
+				error?.message === "Attachment is not available"
+			) {
+				throw new MessageSubmissionError(
+					"附件不存在、无权使用或正在清理，请重新上传",
+					"attachment_unavailable",
+			);
+			}
 			if (error?.message === "Message content cannot be empty") {
 				throw new MessageSubmissionError("消息内容不能为空");
 			}

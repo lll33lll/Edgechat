@@ -29,6 +29,7 @@ test("Android release signs and publishes the primary Capacitor client", () => {
 	assert.match(release, /node-version: "24"/);
 	assert.match(release, /java-version: "21"/);
 	assert.match(release, /npm run capacitor:sync/);
+	assert.match(release, /require\('\.\/package\.json'\)\.version/);
 	assert.match(release, /assembleDebugAndroidTest/);
 	assert.match(release, /:app:assembleRelease :app:bundleRelease/);
 	assert.match(release, /capacitor\/android\/app\/build\/outputs\/apk\/release/);

@@ -1,4 +1,5 @@
-import { softDeleteMessage } from "./data/messages.js";
+import { cleanupR2Keys } from "./gc.js";
+import { getMessageDeletionTarget, softDeleteMessage } from "./data/messages.js";
 import { authorizeMessageModeration } from "./room-access.js";
 
 export class MessageDeletionError extends Error {
@@ -11,6 +12,8 @@ export class MessageDeletionError extends Error {
 export function createMessageDeletion({
 	authorize = authorizeMessageModeration,
 	persistDeletion = softDeleteMessage,
+	getDeletionTarget = getMessageDeletionTarget,
+	cleanupAttachments = cleanupR2Keys,
 } = {}) {
 	return async function deleteRoomMessage(env, meta, payload) {
 		const messageId = Number(payload.messageId);
@@ -28,6 +31,12 @@ export function createMessageDeletion({
 			throw new MessageDeletionError("无权删除该消息");
 		}
 
+		let attachmentKey = null;
+		if (env.FILES) {
+			const target = await getDeletionTarget(env.DB, messageId);
+			attachmentKey = target?.attachment_key || null;
+		}
+
 		const deleted = await persistDeletion(env.DB, {
 			channelId: meta.room.id,
 			messageId,
@@ -36,9 +45,16 @@ export function createMessageDeletion({
 			throw new MessageDeletionError("消息不存在或已被删除");
 		}
 
+		const cleanupPromise = attachmentKey
+			? Promise.resolve().then(() => cleanupAttachments(env, [attachmentKey])).catch((error) => {
+					console.warn("Failed to clean up deleted message attachment", error);
+				})
+			: null;
+
 		return {
-				messageId,
-				packet: JSON.stringify({ protocolVersion: 1, type: "message_deleted", messageId }),
+			messageId,
+			packet: JSON.stringify({ protocolVersion: 1, type: "message_deleted", messageId }),
+			cleanupPromise,
 		};
 	};
 }

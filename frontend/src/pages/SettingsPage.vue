@@ -7,6 +7,7 @@ import UiAvatar from '../components/ui/Avatar.vue';
 import LanguageSwitch from '../components/ui/LanguageSwitch.vue';
 import { isCapacitorAndroid, pickNativeFile } from '../capacitor-platform.ts';
 import { useI18n } from '../i18n.js';
+import { BIO_MAX_LENGTH, bioLength, normalizeBio } from '../../../shared/user-profile.ts';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -15,8 +16,10 @@ const showAdminEntry = computed(() => Boolean(session.value?.isAdmin));
 
 const profileForm = reactive({
   displayName: session.value?.displayName || '',
+  bio: session.value?.bio || '',
   customBackground: localStorage.getItem('customBackground') || ''
 });
+const profileBioLength = computed(() => bioLength(profileForm.bio));
 const passwordForm = reactive({
   currentPassword: '',
   newPassword: ''
@@ -50,10 +53,21 @@ function clearMessage() {
 
 async function saveProfile() {
   clearMessage();
+  if (savingProfile.value) return;
+  if (profileBioLength.value > BIO_MAX_LENGTH) {
+    error.value = t('profile.bioTooLong');
+    return;
+  }
   savingProfile.value = true;
   try {
-    const payload = await api.updateProfile(profileForm);
+    const submittedBio = profileForm.bio;
+    const payload = await api.updateProfile({
+      displayName: profileForm.displayName,
+      bio: normalizeBio(submittedBio)
+    });
     store.setSession(payload.session);
+    // 只规范化这次已保存的输入，头像更新与请求期间的新编辑不能重置草稿。
+    if (profileForm.bio === submittedBio) profileForm.bio = payload.session.bio;
     if (profileForm.customBackground) {
       localStorage.setItem('customBackground', profileForm.customBackground);
       document.body.style.background = profileForm.customBackground;
@@ -221,7 +235,6 @@ async function confirmCrop() {
     const file = new File([blob], 'avatar.png', { type: 'image/png' });
     const upload = await api.uploadFile(file);
     const payload = await api.updateProfile({
-      displayName: profileForm.displayName,
       avatarKey: upload.file.key
     });
     store.setSession(payload.session);
@@ -239,7 +252,6 @@ async function removeAvatar() {
   uploadingAvatar.value = true;
   try {
     const payload = await api.updateProfile({
-      displayName: profileForm.displayName,
       avatarKey: null
     });
     store.setSession(payload.session);
@@ -347,6 +359,18 @@ async function changePassword() {
               autocomplete="nickname"
             />
           </label>
+          <label class="field-compact">
+            <span>{{ t('profile.bio') }}</span>
+            <textarea
+              v-model="profileForm.bio"
+              class="ui-input profile-bio-input"
+              rows="4"
+              aria-describedby="profile-bio-help profile-bio-count"
+              :aria-invalid="profileBioLength > BIO_MAX_LENGTH"
+            />
+          </label>
+          <small id="profile-bio-count">{{ profileBioLength }} / {{ BIO_MAX_LENGTH }}</small>
+          <p id="profile-bio-help" class="profile-bio-help">{{ t('profile.visibility') }}</p>
           <label class="field-compact">
             <span>{{ t('settings.customBackground') }}</span>
             <input

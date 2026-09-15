@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
@@ -7,7 +9,7 @@ if (signingPropertiesFile.exists()) {
     signingPropertiesFile.withInputStream { signingProperties.load(it) }
 }
 def edgechatVersionCode = (project.findProperty('edgechatVersionCode') ?: '1').toInteger()
-def edgechatVersionName = project.findProperty('edgechatVersionName') ?: '0.1.0'
+def edgechatVersionName = project.findProperty('edgechatVersionName') ?: new JsonSlurper().parse(rootProject.file('../../package.json')).version
 
 android {
     namespace = "com.aozorae.edgechat.web"

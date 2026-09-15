@@ -1,5 +1,26 @@
 /* ===== Surface：统一卡片系统 ===== */
 
+.profile-avatar-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.profile-avatar-trigger:focus-visible {
+  outline: 2px solid #008069;
+  outline-offset: 2px;
+}
+.profile-bio-input { resize: vertical; min-height: 100px; font: inherit; }
+.profile-bio-help { color: #54656f; font-size: 13px; line-height: 1.5; }
+
 .ui-surface {
   border-radius: 14px;
   border: 1px solid #e8ecf0;

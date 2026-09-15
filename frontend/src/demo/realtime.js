@@ -1,4 +1,10 @@
-import { cloneDemo, createDemoMessage, demoState, roomKey } from './state.js';
+import {
+	cloneDemo,
+	createDemoMessage,
+	demoState,
+	getDemoDirectMessageBlockStatus,
+	roomKey
+} from './state.js';
 
 const roomSockets = new Map();
 const inboxSockets = new Set();
@@ -73,9 +79,20 @@ function hasEnabledTelegramMapping(kind, roomId) {
 }
 
 function handleRoomFrame(socket, frame) {
-  const payload = JSON.parse(frame);
-  if (payload.type === 'send') {
-    const message = createDemoMessage({
+	const payload = JSON.parse(frame);
+	if (payload.type === 'send') {
+		if (socket.kind === 'dm') {
+			const status = getDemoDirectMessageBlockStatus(socket.roomId, demoState.session.userId);
+			if (status.blockedByPeer) {
+				emit(socket, { type: 'error', error: '发送被拒，你已经被拉黑' });
+				return;
+			}
+			if (status.blockedBySender) {
+				emit(socket, { type: 'error', error: '请先解除拉黑再发送' });
+				return;
+			}
+		}
+		const message = createDemoMessage({
       kind: socket.kind,
       roomId: socket.roomId,
       content: payload.content,

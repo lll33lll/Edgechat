@@ -1,5 +1,5 @@
 <script setup>
-import { Pin, PinOff, Reply, Trash2 } from '@lucide/vue';
+import { Copy, Pin, PinOff, Reply, Trash2 } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { t } from '../../i18n.js';
 
@@ -9,12 +9,15 @@ const props = defineProps({
   y: { type: Number, default: 0 },
   canPin: { type: Boolean, default: false },
   canDelete: { type: Boolean, default: false },
+  canCopy: { type: Boolean, default: false },
   pinned: { type: Boolean, default: false }
 });
-const emit = defineEmits(['close', 'reply', 'pin', 'unpin', 'delete']);
+const emit = defineEmits(['close', 'copy', 'reply', 'pin', 'unpin', 'delete']);
 
 const menuEl = ref(null);
-const menuHeight = computed(() => 16 + (1 + Number(props.canPin) + Number(props.canDelete)) * 40);
+const menuHeight = computed(() =>
+  16 + (1 + Number(props.canCopy) + Number(props.canPin) + Number(props.canDelete)) * 40
+);
 const menuStyle = computed(() => ({
   left: `${Math.max(8, Math.min(props.x, window.innerWidth - 184))}px`,
   top: `${Math.max(8, Math.min(props.y, window.innerHeight - menuHeight.value))}px`
@@ -79,7 +82,11 @@ onBeforeUnmount(() => {
 		  <Reply :size="18" :stroke-width="1.8" aria-hidden="true" />
 		  {{ t('messages.reply') }}
 		</button>
-        <button
+		<button v-if="canCopy" type="button" role="menuitem" @click="emit('copy')">
+		  <Copy :size="18" :stroke-width="1.8" aria-hidden="true" />
+		  {{ t('messages.copyMarkdown') }}
+		</button>
+	        <button
           v-if="canPin"
           type="button"
           role="menuitem"

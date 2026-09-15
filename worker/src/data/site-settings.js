@@ -1,3 +1,5 @@
+import { normalizeSiteIconForStorage, siteIconUrlFromStored } from "../site-icon.js";
+
 export async function getSiteSettings(db) {
 	const { results } = await db
 		.prepare("SELECT setting_key, setting_value FROM site_settings")
@@ -7,11 +9,11 @@ export async function getSiteSettings(db) {
 	);
 	return {
 		siteName: String(map.site_name || "Edgechat"),
-		siteIconUrl: String(map.site_icon_url || ""),
+		siteIconUrl: siteIconUrlFromStored(map.site_icon_url),
 	};
 }
 
-export async function updateSiteSettings(db, { siteName, siteIconUrl }) {
+export async function updateSiteSettings(db, { siteName, siteIconUrl, siteOrigin = "" }) {
 	const statements = [];
 	if (siteName !== undefined) {
 		statements.push(
@@ -27,6 +29,7 @@ export async function updateSiteSettings(db, { siteName, siteIconUrl }) {
 		);
 	}
 	if (siteIconUrl !== undefined) {
+		const storedIcon = normalizeSiteIconForStorage(siteIconUrl, [siteOrigin]);
 		statements.push(
 			db
 				.prepare(
@@ -36,7 +39,7 @@ export async function updateSiteSettings(db, { siteName, siteIconUrl }) {
 					 SET setting_value = excluded.setting_value,
 					     updated_at = CURRENT_TIMESTAMP`,
 				)
-				.bind(String(siteIconUrl || "").trim()),
+				.bind(storedIcon),
 		);
 	}
 	if (statements.length) {

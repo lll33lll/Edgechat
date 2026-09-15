@@ -165,6 +165,12 @@ export class ChannelRoom {
     );
   }
 
+  runAttachmentCleanup(result) {
+    if (result.cleanupPromise) {
+      this.state.waitUntil(result.cleanupPromise);
+    }
+  }
+
   async receiveExternalMessage(request) {
     if (!isVerifiedInternalRequest(request)) {
       return new Response('Unauthorized', { status: 401 });
@@ -219,6 +225,7 @@ export class ChannelRoom {
       if (action?.type === 'delete_message') {
         const result = await deleteRoomMessage(this.env, meta, action);
         await this.broadcast(result.packet);
+        this.runAttachmentCleanup(result);
         return Response.json({ ok: true, messageId: result.messageId });
       }
       if (action?.type === 'pin_message') {
@@ -348,8 +355,9 @@ export class ChannelRoom {
       }
 
       if (payload.type === 'delete_message') {
-        const { packet } = await deleteRoomMessage(this.env, currentMeta, payload);
-        await this.broadcast(packet);
+        const result = await deleteRoomMessage(this.env, currentMeta, payload);
+        await this.broadcast(result.packet);
+        this.runAttachmentCleanup(result);
         return;
       }
       if (payload.type === 'pin_message') {

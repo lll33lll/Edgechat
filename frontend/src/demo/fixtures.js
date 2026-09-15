@@ -61,6 +61,7 @@ export function createDemoFixtures() {
       id: 1,
       username: 'admin',
       displayName: '演示管理员',
+      bio: '',
       avatarUrl: '',
       isAdmin: true,
       isDisabled: false,
@@ -111,6 +112,30 @@ export function createDemoFixtures() {
       isPermanentlyDisabled: true,
       disabledUntil: null,
       createdAt: '2026-07-20T05:45:00.000Z'
+    },
+    {
+      id: 6,
+      username: 'alicia',
+      displayName: 'Alice',
+      bio: '',
+      avatarUrl: '',
+      isAdmin: false,
+      isDisabled: false,
+      isPermanentlyDisabled: false,
+      disabledUntil: null,
+      createdAt: '2026-08-02T11:20:00.000Z'
+    },
+    {
+      id: 7,
+      username: 'long-name',
+      displayName: '负责跨团队协作与超长姓名布局验证的演示用户',
+      bio: '用于验证长名称在通讯录与资料卡中的自然降级。',
+      avatarUrl: '',
+      isAdmin: false,
+      isDisabled: false,
+      isPermanentlyDisabled: false,
+      disabledUntil: null,
+      createdAt: '2026-08-03T12:30:00.000Z'
     }
   ];
 
@@ -350,7 +375,8 @@ export function createDemoFixtures() {
     users,
     channels,
     dms,
-    messages,
+		messages,
+		userBlocks: new Set(),
     pinnedMessages: {
       'public:1': messages['public:1'][1]
     },
@@ -400,7 +426,7 @@ export function createDemoFixtures() {
         }
       ]
     },
-    nextUserId: 6,
+    nextUserId: 8,
     nextChannelId: 5,
     nextDmId: 11,
     nextMessageId: 150,

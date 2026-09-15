@@ -34,7 +34,13 @@ const router = createRouter({
       path: '/',
       name: 'chat',
       component: ChatPage,
-      meta: { transition: 'page' }
+      meta: { transition: 'page', workspace: true }
+    },
+    {
+      path: '/contacts',
+      name: 'contacts',
+      component: ChatPage,
+      meta: { transition: 'page', workspace: true }
     },
     {
       path: '/admin',
