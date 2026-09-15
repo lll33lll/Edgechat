@@ -1,0 +1,65 @@
+name: 🔄 一次性同步上游 / one-shot upstream sync
+
+# 【临时 workflow，执行完由维护者删除】把上游 aozorae/Edgechat 合并进本 fork
+# （等价于 Code 页的 Sync fork → Update branch）并触发一次部署。
+# 背景：内置 GITHUB_TOKEN 没有 workflows 写权限，待合并差异里只要包含
+# .github/workflows/ 下的文件，merge-upstream 与 git push 都会被 422 拒绝。
+# 本次推送前已把上游改过的两个 workflow 文件对齐为上游版本，绕开该限制。
+# 触发方式：on push（推送本文件即自触发）。
+
+on:
+  push:
+    paths:
+      - ".github/workflows/sync-oneshot.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    name: 🔄 同步并部署
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 检出 / checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔗 合并上游 / merge upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api --method POST "repos/$GITHUB_REPOSITORY/merge-upstream" \
+               -f branch="$GITHUB_REF_NAME"; then
+            echo "✅ merge-upstream 调用成功"
+          else
+            echo "::warning:: merge-upstream 失败，回退本地 git merge"
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git remote add upstream "https://github.com/aozorae/Edgechat.git"
+            git fetch --no-tags upstream "$GITHUB_REF_NAME"
+            git merge --ff-only "upstream/$GITHUB_REF_NAME" \
+              || git merge --no-edit -X theirs "upstream/$GITHUB_REF_NAME" \
+                   -m "chore: sync upstream aozorae/Edgechat"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: 🚀 触发部署 / dispatch deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BEFORE=$(gh run list --workflow deploy-worker.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+          gh workflow run deploy-worker.yml --ref "$GITHUB_REF_NAME"
+          FOUND=""
+          for _ in $(seq 1 12); do
+            sleep 10
+            AFTER=$(gh run list --workflow deploy-worker.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$AFTER" != "$BEFORE" ]; then FOUND="$AFTER"; break; fi
+          done
+          if [ -n "$FOUND" ]; then
+            echo "✅ 已触发部署（run $FOUND）"
+          else
+            echo "::warning:: 未检测到新的部署运行，请手动运行 deploy-worker.yml"
+            exit 1
+          fi

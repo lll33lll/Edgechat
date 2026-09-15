@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version without the android-v prefix
-        required: true
+        description: Version without the android-v prefix; defaults to package.json
+        required: false
         type: string
       prerelease:
         description: Publish as a prerelease
@@ -53,8 +53,8 @@ jobs:
             version="${GITHUB_REF_NAME#android-v}"
             tag="$GITHUB_REF_NAME"
           else
-            version="$INPUT_VERSION"
-            tag="android-v${INPUT_VERSION}"
+            version="${INPUT_VERSION:-$(node -p "require('./package.json').version")}"
+            tag="android-v${version}"
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
