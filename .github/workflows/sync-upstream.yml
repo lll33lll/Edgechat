@@ -13,6 +13,18 @@ name: 🔄 同步上游 + 部署 / Sync upstream and deploy
 #
 # ⚠️ 不要在仓库 Code 页点 Sync fork 里的 “Discard commits”，
 #    那会把本 fork 自己加的文件（包括这个 workflow）一起删掉。
+#
+# 🔑 关于 token：内置 GITHUB_TOKEN 按 GitHub 的设计没有 workflows 写权限——
+#    待同步差异里只要包含 .github/workflows/ 下的文件，merge-upstream 接口和
+#    git push 都会被拒。一劳永逸的解法是配一个专用 token（SYNC_TOKEN）：
+#      1. 建一个只授权本仓库的 fine-grained PAT，
+#         权限：Contents = Read and write，Workflows = Read and write；
+#         或 classic PAT 勾选 workflow scope。
+#      2. 存到 Settings → Secrets and variables → Actions → New repository secret，
+#         名字填 SYNC_TOKEN。
+#    配好后本 workflow 会自动优先用它，workflow 文件也能直接同步并部署，
+#    不用再去网页手动 Sync fork。没配 SYNC_TOKEN 时行为不变（仍用内置 token）。
+#
 
 on:
   workflow_dispatch:
@@ -51,6 +63,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # 配了 SYNC_TOKEN 就用它（含 workflows 权限，能推 workflow 文件），否则退回内置 token
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
 
       - name: 🔎 定位上游仓库 / Resolve upstream
         env:
@@ -112,8 +126,15 @@ jobs:
         id: sync
         if: github.event.inputs.dry_run != 'true' && steps.check.outputs.behind != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
+          if [ -n "$SYNC_TOKEN" ]; then
+            echo "🔑 本次同步使用 SYNC_TOKEN（含 workflows 写权限）"
+          else
+            echo "🔑 本次同步使用内置 GITHUB_TOKEN（无 workflows 写权限）"
+          fi
+
           UPDATED=false
           METHOD=""
 
@@ -167,11 +188,19 @@ jobs:
               echo ""
               echo "## ❌ 同步失败"
               echo ""
-              if [ "${{ steps.check.outputs.wf_changed }}" != "0" ]; then
-                echo "上游这次改动包含 \`.github/workflows/\` 里的文件，而 Actions 的内置 token 没有 \`workflows\` 写权限，推不上去。"
+              if [ -n "$SYNC_TOKEN" ]; then
+                echo "已配置 SYNC_TOKEN，但推送仍被拒。请检查："
                 echo ""
-                echo "**解决办法**：打开仓库 Code 页 → 右上角 **Sync fork** → **Update branch**"
+                echo "- token 是否含 **Contents + Workflows** 读写权限（classic PAT 需 \`workflow\` scope）、是否已过期"
+                echo "- 是否只授权了本仓库"
+                echo "- Settings → Actions → General → Workflow permissions 是否为 **Read and write permissions**"
+              elif [ "${{ steps.check.outputs.wf_changed }}" != "0" ]; then
+                echo "上游这次改动包含 \`.github/workflows/\` 里的文件，而内置 token 没有 \`workflows\` 写权限，推不上去。"
+                echo ""
+                echo "**一次性解法**：打开仓库 Code 页 → 右上角 **Sync fork** → **Update branch**"
                 echo "（注意选 Update branch，不要选 Discard commits），然后回来跑一次本 workflow 并勾上 \`force_deploy\`。"
+                echo ""
+                echo "**一劳永逸**：按本 workflow 文件头部的说明配置 \`SYNC_TOKEN\` secret，以后就不用手动同步。"
               else
                 echo "推送被拒绝。请检查 Settings → Actions → General → Workflow permissions"
                 echo "是否为 **Read and write permissions**，然后重试。"
