@@ -12,6 +12,8 @@ export async function submitExternalMessage(env, { room, payload }) {
 		sourceAttachmentUniqueId: payload.sourceAttachmentUniqueId,
 		replyToMessageId: payload.replyToMessageId,
 		replyToSenderId: payload.replyToSenderId,
+		bridgeDelivery: payload.bridgeDelivery,
+		sourceInstance: payload.sourceInstance,
 	});
 	return {
 		...result,

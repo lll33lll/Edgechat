@@ -2,6 +2,8 @@ import {
 	getTelegramCredentials,
 	listEnabledTelegramMappingsForChannel,
 } from "../../data/telegram.js";
+import { isGroupChannelKind } from "../../../../shared/group-channel.ts";
+import { isLocalBridgeMessage } from "../bridge-policy.ts";
 import { getMessageBySource } from "../../data/messages.js";
 import {
 	findMessageReplyBySource,
@@ -133,7 +135,7 @@ function telegramReplyMessageId(reference, telegramChatId) {
 }
 
 export async function forwardEdgeChatMessageToTelegram(env, { room, message }) {
-	if (room.kind !== "public" || message.source === "telegram") {
+	if (!isGroupChannelKind(room.kind) || !isLocalBridgeMessage(message)) {
 		return;
 	}
 
@@ -216,7 +218,7 @@ export async function ingestTelegramMessage(env, { mapping, telegramMessage, bot
 		const response = await submitExternalRoomMessage(env, {
 			room: {
 				id: mapping.channelId,
-				kind: "public",
+				kind: mapping.channelKind,
 				name: mapping.channelName,
 			},
 			content,

@@ -189,6 +189,21 @@ export const D1_MIGRATIONS = [
 		file: "worker/migrations/2026-09-12-user-bio.sql",
 		artifacts: ["column:users.bio"],
 	},
+  {
+    id: "2026-09-19-instance-bridge",
+    file: "worker/migrations/2026-09-19-instance-bridge.sql",
+    artifacts: [
+      "column:messages.bridge_binding_id", "column:messages.source_instance",
+      "column:messages.bridge_event_id", "column:messages.bridge_sent_at", "column:messages.bridge_target_revision",
+      "table:bridge_instance", "table:instance_bindings", "table:bridge_outbox", "table:bridge_receipts",
+      "trigger:enqueue_instance_bridge_message", "trigger:validate_instance_bridge_message",
+      "trigger:revoke_instance_bridge_deleted_channel",
+      "trigger:cancel_instance_bridge_deleted_message", "trigger:revoke_instance_bridge_soft_deleted_channel",
+      "trigger:cancel_instance_bridge_generation", "index:idx_instance_bindings_channel",
+      "trigger:validate_instance_binding_group", "trigger:count_instance_bridge_deleted_message",
+      "index:idx_instance_bindings_control", "index:idx_bridge_outbox_due", "index:idx_bridge_receipts_expiry",
+    ],
+  },
 ];
 
 // b3f6855 曾发布、0c13e8f 已撤回的迁移：仅识别历史 ledger，不要求新安装创建废弃表，也不删除旧数据。

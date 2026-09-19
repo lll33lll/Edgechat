@@ -8,6 +8,7 @@ function mapMapping(row) {
 		id: Number(row.id),
 		channelId: Number(row.channel_id),
 		channelName: row.channel_name || "",
+		channelKind: row.channel_kind || "",
 		telegramChatId: String(row.telegram_chat_id),
 		telegramChatTitle: row.telegram_chat_title || "",
 		enabled: Boolean(Number(row.enabled)),
@@ -25,17 +26,18 @@ export async function listTelegramBridgeAdminState(env) {
 			 LIMIT 1`,
 		).all(),
 		env.DB.prepare(
-			`SELECT id, name
+			`SELECT id, name, kind
 			 FROM channels
-			 WHERE kind = 'public' AND deleted_at IS NULL
+			 WHERE kind IN ('public', 'private') AND deleted_at IS NULL
 			 ORDER BY CASE WHEN name = 'general' THEN 0 ELSE 1 END, name ASC`,
 		).all(),
 		env.DB.prepare(
-			`SELECT tm.id, tm.channel_id, c.name AS channel_name, tm.telegram_chat_id,
+			`SELECT tm.id, tm.channel_id, c.name AS channel_name, c.kind AS channel_kind,
+			        tm.telegram_chat_id,
 			        tm.telegram_chat_title, tm.enabled, tm.created_at, tm.updated_at
 			 FROM telegram_mappings tm
 			 JOIN channels c ON c.id = tm.channel_id
-			 WHERE c.deleted_at IS NULL
+			 WHERE c.kind IN ('public', 'private') AND c.deleted_at IS NULL
 			 ORDER BY tm.updated_at DESC, tm.id DESC`,
 		).all(),
 	]);
@@ -51,6 +53,7 @@ export async function listTelegramBridgeAdminState(env) {
 		channels: channelsResult.results.map((row) => ({
 			id: Number(row.id),
 			name: row.name,
+			kind: row.kind,
 		})),
 		mappings: mappingsResult.results.map(mapMapping),
 	};
@@ -123,7 +126,7 @@ export async function getTelegramMappingByChatId(db, telegramChatId) {
 		 JOIN channels c ON c.id = tm.channel_id
 		 WHERE tm.telegram_chat_id = ?
 		   AND tm.enabled = 1
-		   AND c.kind = 'public'
+		   AND c.kind IN ('public', 'private')
 		   AND c.deleted_at IS NULL
 		 LIMIT 1`,
 	)
@@ -134,13 +137,14 @@ export async function getTelegramMappingByChatId(db, telegramChatId) {
 
 export async function listEnabledTelegramMappingsForChannel(db, channelId) {
 	const { results } = await db.prepare(
-		`SELECT tm.id, tm.channel_id, c.name AS channel_name, tm.telegram_chat_id,
+		`SELECT tm.id, tm.channel_id, c.name AS channel_name, c.kind AS channel_kind,
+		        tm.telegram_chat_id,
 		        tm.telegram_chat_title, tm.enabled, tm.created_at, tm.updated_at
 		 FROM telegram_mappings tm
 		 JOIN channels c ON c.id = tm.channel_id
 		 WHERE tm.channel_id = ?
 		   AND tm.enabled = 1
-		   AND c.kind = 'public'
+		   AND c.kind IN ('public', 'private')
 		   AND c.deleted_at IS NULL
 		 ORDER BY tm.id ASC`,
 	)
@@ -158,7 +162,7 @@ export async function createTelegramMapping(db, {
 	const channelResult = await db.prepare(
 		`SELECT id
 		 FROM channels
-		 WHERE id = ? AND kind = 'public' AND deleted_at IS NULL
+		 WHERE id = ? AND kind IN ('public', 'private') AND deleted_at IS NULL
 		 LIMIT 1`,
 	)
 		.bind(Number(channelId))

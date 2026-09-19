@@ -1,6 +1,8 @@
 import maintenanceEn from './maintenance/en-US.js';
+import bridge from './instance-bridge/en-US.js';
 
 export default {
+  ...bridge,
   ...maintenanceEn,
   'profile.title': 'User profile',
   'profile.view': 'View {name}’s profile',
@@ -282,7 +284,7 @@ export default {
   'admin.nav.createUser': 'Create user',
   'admin.nav.registrationLinks': 'Registration links',
   'admin.nav.telegram': 'Telegram integration',
-  'admin.nav.telegramDescription': 'Manage the bot and public group mappings',
+	'admin.nav.telegramDescription': 'Manage the bot and group mappings',
   'admin.nav.site': 'Site settings',
   'admin.nav.siteDescription': 'Manage site appearance and version status',
   'admin.nav.siteAppearance': 'Site appearance',
@@ -395,7 +397,7 @@ export default {
   'invites.copy': 'Copy',
   'invites.revoke': 'Disable link',
   'telegram.title': 'Telegram integration',
-  'telegram.description': 'Connect a Telegram bot and link public groups to Telegram chats.',
+	'telegram.description': 'Connect a Telegram bot and link public or private groups to Telegram chats.',
   'telegram.botConnected': 'Bot connected. Webhook updated.',
   'telegram.mappingSaved': 'Group mapping saved.',
   'telegram.confirmDeleteMapping': 'Delete the Telegram mapping for {name}?',
@@ -410,7 +412,7 @@ export default {
   'telegram.connectBot': 'Connect bot',
   'telegram.groupMappings': 'Group mappings',
   'telegram.mappingCount': '{count} Telegram groups linked',
-  'telegram.edgechatPublicGroup': 'EdgeChat public group',
+	'telegram.edgechatGroup': 'EdgeChat group',
   'telegram.selectGroup': 'Select group',
   'telegram.chatId': 'Telegram group ID',
   'telegram.saveMapping': 'Save mapping',

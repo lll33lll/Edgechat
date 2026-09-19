@@ -21,6 +21,9 @@ import { ApiError } from './errors.js';
 import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMaintenanceRoutes } from './api/maintenance.ts';
+import { registerInstanceBridgePublicRoutes, registerInstanceBridgeRoutes } from './api/instance-bridge.ts';
+import { InstanceBridge } from './do/InstanceBridge.ts';
+import { rescueBridgeDeliveries } from './integrations/instance-bridge/delivery.ts';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerContactRoutes } from './api/contacts.ts';
 import { registerDmRoutes } from './api/dm.js';
@@ -76,6 +79,7 @@ app.get('/api/site', async (c) => {
 });
 
 registerTelegramPublicRoutes(app);
+registerInstanceBridgePublicRoutes(app);
 
 app.get('/api/register-links/:token', async (c) => {
   const token = String(c.req.param('token') || '').trim();
@@ -283,6 +287,7 @@ registerChannelRoutes(app);
 registerAdminRoutes(app);
 registerMaintenanceRoutes(app);
 registerTelegramAdminRoutes(app);
+registerInstanceBridgeRoutes(app);
 
 app.get('/api/ws/:kind/:id', async (c) => {
   const session = c.get('session');
@@ -334,8 +339,15 @@ app.onError((error, c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(runScheduledGc(env));
+  async scheduled(controller, env, ctx) {
+    const tasks = [rescueBridgeDeliveries(env)];
+    // 免费账户的 cron 数量是账户级上限；复用 15 分钟触发器，在 UTC 19:00 的轮次追加每日 GC。
+    if (shouldRunDailyGc(controller.scheduledTime)) tasks.push(runScheduledGc(env));
+    ctx.waitUntil(Promise.all(tasks));
   }
 };
-export { ChannelRoom, Scheduler, UserInbox };
+export function shouldRunDailyGc(scheduledTime) {
+  const time = new Date(scheduledTime);
+  return time.getUTCHours() === 19 && time.getUTCMinutes() === 0;
+}
+export { ChannelRoom, Scheduler, UserInbox, InstanceBridge };

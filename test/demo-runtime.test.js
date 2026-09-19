@@ -35,6 +35,8 @@ test('demo backend exposes chat, contacts, admin, storage and Telegram fixture d
   assert.equal(storage.items.some((item) => item.ownerType === 'telegram'), true);
   assert.equal(telegram.config.configured, true);
   assert.equal(telegram.mappings[0].enabled, true);
+  assert.equal(telegram.channels.some((channel) => channel.kind === 'private'), true);
+  assert.equal(telegram.channels.every((channel) => channel.kind !== 'dm'), true);
 });
 
 test('demo backend keeps group and admin mutations in browser memory', async () => {
@@ -274,4 +276,36 @@ test('Telegram replies increment the inbox unread projection', async () => {
   assert.equal(inboxFrames.at(-1).room.name, 'Telegram 联动');
   roomSocket.close();
   inboxSocket.close();
+});
+
+test('demo Telegram bridge accepts a private group mapping', async () => {
+  const state = await requestDemo('/admin/telegram/mappings', {
+    method: 'POST',
+    body: { channelId: 2, telegramChatId: '-1002345678902' }
+  });
+  assert.equal(state.mappings.at(-1).channelKind, 'private');
+
+  const frames = [];
+  let roomSocket;
+  await new Promise((resolve) => {
+    roomSocket = connectDemoRoomSocket({
+      kind: 'private',
+      roomId: 2,
+      onMessage(frame) {
+        frames.push(JSON.parse(frame));
+      },
+      onStatus(event) {
+        if (event.status === 'open') resolve();
+      }
+    });
+  });
+
+  roomSocket.send(JSON.stringify({ type: 'send', content: '私有群桥接测试' }));
+  await new Promise((resolve) => setTimeout(resolve, 720));
+
+  assert.equal(
+    frames.some((frame) => frame.message?.sender?.source === 'telegram'),
+    true
+  );
+  roomSocket.close();
 });

@@ -161,7 +161,7 @@ test('仪表盘复用现有概况接口并只展示可验证统计', () => {
   assert.match(dashboardSource, /t\('dashboard\.systemOverview'\)/);
 });
 
-test('Telegram 互通页由管理员路由保护并分别管理 Bot 与公开群组映射', () => {
+test('Telegram 互通页由管理员路由保护并统一管理公开与私有群组映射', () => {
   assert.match(routerSource, /import AdminTelegramPage/);
   assert.match(routerSource, /path: 'telegram'/);
   assert.match(routerSource, /adminTitleKey: 'admin\.nav\.telegram'/);
@@ -169,6 +169,8 @@ test('Telegram 互通页由管理员路由保护并分别管理 Bot 与公开群
   assert.match(telegramSource, /api\.createAdminTelegramMapping/);
   assert.match(telegramSource, /type="checkbox"/);
   assert.match(telegramSource, /t\('telegram\.chatId'\)/);
+  assert.match(telegramSource, /t\('telegram\.edgechatGroup'\)/);
+  assert.match(telegramSource, /channel\.kind === 'private'/);
 });
 
 test('仪表盘在中等桌面宽度提前重排且快捷入口文字保持完整', () => {

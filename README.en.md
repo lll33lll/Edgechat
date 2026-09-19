@@ -50,6 +50,14 @@ You do not need to maintain a permanently running server. The application and da
 
 [Interface Preview](#interface-preview) · [Live Demo](#live-demo) · [Telegram Bridging](#telegram-two-way-bridging) · [Features](#features) · [Privacy and Encryption](#privacy-and-encryption) · [Deployment](#deployment) · [Local Development](#local-development)
 
+## Cross-instance group binding
+
+Starting with `2.8.0`, administrators can open **Cross-instance group binding** in the admin sidebar to connect a public, private, or general group to one group on another independent EdgeChat site. A ten-minute one-time invitation is claimed by the second administrator, then the initiator verifies the peer origin and group and confirms activation. Direct messages cannot be bound.
+
+Only new locally authored text, sender names, and source-instance labels are synchronized. History, attachments, reply references, edits, and deletions are not replicated. Pausing cancels backlog; resuming accepts only the new generation. Unlink stops new deliveries, but in-flight requests may finish and delivered copies remain. The admin page exposes backlog and failure/discard status.
+
+The normal Actions deployment applies the additive migration before releasing the Worker with its `INSTANCE_BRIDGE` Durable Object. No new manual secret is required; **retain every existing encryption key**. See the [setup guide](https://echat.azora.top/en/guide/instance-bridge). Both Telegram and instance-bridge outbound paths reject externally sourced messages to prevent cross-bridge propagation.
+
 ## Interface Preview
 
 <table>
@@ -90,7 +98,7 @@ The project itself is free and open source. Cloud service costs depend on your C
 
 **You do not have to move everyone into the same application.**
 
-Administrators can bind EdgeChat groups to Telegram groups and relay messages in both directions through a Telegram Bot: messages sent on the web can be synchronized to Telegram, and messages in the Telegram group return to EdgeChat.
+Administrators can view both public and private EdgeChat groups in the admin console and bind any group to a Telegram group. A Telegram Bot relays messages in both directions: messages sent on the web can be synchronized to Telegram, and messages in the Telegram group return to EdgeChat. One-to-one direct messages are never bridged.
 
 This suits teams and communities that already have Telegram groups but also need an independent web chat entry point.
 
@@ -129,7 +137,7 @@ This suits teams and communities that already have Telegram groups but also need
 
 ### 🔌 Connections and Extensions
 
-- Two-way Telegram group message bridging, including voice message synchronization.
+- Administrator-configured two-way Telegram bridging for public and private groups, including voice message synchronization.
 - WebMCP site tools: in compatible client environments, provides login, conversation queries, message reading, sending, and related capabilities.
 
 ## Privacy and Encryption

@@ -1,6 +1,8 @@
 import maintenanceZh from './maintenance/zh-CN.js';
+import bridge from './instance-bridge/zh-CN.js';
 
 export default {
+  ...bridge,
   ...maintenanceZh,
   'profile.title': '用户资料',
   'profile.view': '查看 {name} 的资料',
@@ -282,7 +284,7 @@ export default {
   'admin.nav.createUser': '创建用户',
   'admin.nav.registrationLinks': '注册链接',
   'admin.nav.telegram': 'Telegram 互通',
-  'admin.nav.telegramDescription': '管理 Bot 与公开群组映射',
+	'admin.nav.telegramDescription': '管理 Bot 与群组映射',
   'admin.nav.site': '网站设置',
   'admin.nav.siteDescription': '维护站点外观与版本状态',
   'admin.nav.siteAppearance': '站点外观',
@@ -395,7 +397,7 @@ export default {
   'invites.copy': '复制',
   'invites.revoke': '停用链接',
   'telegram.title': 'Telegram 互通',
-  'telegram.description': '连接一个 Telegram Bot，并将公开群组绑定到 Telegram 群聊。',
+	'telegram.description': '连接一个 Telegram Bot，并将公开或私有群组绑定到 Telegram 群聊。',
   'telegram.botConnected': 'Bot 已连接，Webhook 已更新。',
   'telegram.mappingSaved': '群组映射已保存。',
   'telegram.confirmDeleteMapping': '确认删除 {name} 的 Telegram 映射吗？',
@@ -410,7 +412,7 @@ export default {
   'telegram.connectBot': '连接 Bot',
   'telegram.groupMappings': '群组映射',
   'telegram.mappingCount': '{count} 个 Telegram 群已绑定',
-  'telegram.edgechatPublicGroup': 'EdgeChat 公开群组',
+	'telegram.edgechatGroup': 'EdgeChat 群组',
   'telegram.selectGroup': '选择群组',
   'telegram.chatId': 'Telegram 群 ID',
   'telegram.saveMapping': '保存映射',

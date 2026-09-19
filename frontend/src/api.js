@@ -56,6 +56,14 @@ async function request(path, options = {}) {
 }
 
 export default {
+  instanceBridge(path = '', body) {
+    return request(`/admin/instance-bridge${path}`, body ? {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body
+    } : {});
+  },
+  roomInstanceBridge(roomId) {
+    return request(`/channels/${roomId}/instance-bridge`);
+  },
   login(credentials) {
     return request('/auth/login', {
       method: 'POST',

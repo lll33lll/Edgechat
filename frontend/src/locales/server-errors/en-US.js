@@ -65,7 +65,7 @@ const fixedErrorTranslations = new Map([
   ['Webhook 验证失败', 'Webhook verification failed'],
   ['Telegram Bot Token 不能为空', 'Telegram Bot Token cannot be empty'],
   ['Telegram 配置保存失败', 'Failed to save Telegram configuration'],
-  ['请选择公开群组并填写有效的 Telegram 群 ID', 'Select a public group and enter a valid Telegram group ID'],
+	['请选择群组并填写有效的 Telegram 群 ID', 'Select a group and enter a valid Telegram group ID'],
   ['请先连接 Telegram Bot', 'Connect the Telegram Bot first'],
   ['目标必须是 Telegram 群组或超级群组', 'The target must be a Telegram group or supergroup'],
   ['这个 EdgeChat 群组或 Telegram 群已经绑定', 'This EdgeChat group or Telegram group is already linked'],
@@ -79,7 +79,7 @@ const fixedErrorTranslations = new Map([
   ['请输入群组名称', 'Please enter a group name'],
   ['请输入新密码', 'Please enter a new password'],
   ['请输入 Bot Token', 'Please enter a Bot token'],
-  ['请选择公开群组', 'Please select a public group']
+	['请选择群组', 'Please select a group']
 ]);
 
 const dynamicErrorTranslations = [

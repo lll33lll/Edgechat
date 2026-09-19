@@ -5,6 +5,7 @@ import {
 	getDemoDirectMessageBlockStatus,
 	roomKey
 } from './state.js';
+import { isGroupChannelKind } from '../../../shared/group-channel.ts';
 
 const roomSockets = new Map();
 const inboxSockets = new Set();
@@ -73,7 +74,7 @@ function telegramSender() {
 }
 
 function hasEnabledTelegramMapping(kind, roomId) {
-  return kind === 'public' && demoState.telegram.mappings.some(
+  return isGroupChannelKind(kind) && demoState.telegram.mappings.some(
     (mapping) => Number(mapping.channelId) === Number(roomId) && mapping.enabled
   );
 }

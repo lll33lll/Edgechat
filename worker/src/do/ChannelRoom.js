@@ -11,11 +11,13 @@ import {
 } from '../message-pinning.js';
 import { submitExternalMessage } from '../external-message-submission.js';
 import { forwardEdgeChatMessageToTelegram } from '../integrations/telegram/bridge.js';
+import { isGroupChannelKind } from '../../../shared/group-channel.ts';
 import { authorizeRoom } from '../room-access.js';
 import { validateSession } from '../session.js';
 import { projectUnreadMessage } from '../unread-projection.js';
 import { isVerifiedInternalRequest, parseVerifiedPrincipal } from '../verified-identity.js';
 import { durableObjectHealth } from '../maintenance/do-health.ts';
+import { wakeForMessage } from '../integrations/instance-bridge/delivery.ts';
 
 const MESSAGE_SIZE_LIMIT = 10 * 1024;
 
@@ -160,7 +162,8 @@ export class ChannelRoom {
           message,
           replyToSenderId
         }),
-        forwardEdgeChatMessageToTelegram(this.env, { room, message })
+        forwardEdgeChatMessageToTelegram(this.env, { room, message }),
+        wakeForMessage(this.env, room, message)
       ])
     );
   }
@@ -173,21 +176,27 @@ export class ChannelRoom {
 
   async receiveExternalMessage(request) {
     if (!isVerifiedInternalRequest(request)) {
-      return new Response('Unauthorized', { status: 401 });
+      return Response.json({ error: { code: 'authentication_required', message: 'Unauthorized' } }, { status: 401 });
     }
 
     const payload = await request.json();
     const room = payload.room;
-    if (room?.kind !== 'public' || !Number.isInteger(Number(room.id))) {
-      return new Response('Invalid room', { status: 400 });
+    if (!isGroupChannelKind(room?.kind) || !Number.isInteger(Number(room.id))) {
+      return Response.json({ error: { code: 'invalid_room', message: 'Invalid room' } }, { status: 400 });
     }
 
-    const result = await submitExternalMessage(this.env, { room, payload });
-    if (result.created) {
-      await this.broadcast(result.packet);
-      this.runMessageProjections(room, result.message, result.replyToSenderId);
+    try {
+      const result = await submitExternalMessage(this.env, { room, payload });
+      if (result.created) {
+        await this.broadcast(result.packet);
+        this.runMessageProjections(room, result.message, result.replyToSenderId);
+      }
+      return Response.json({ ok: true, created: result.created, message: result.message });
+    } catch (error) {
+      const stopped = String(error).includes('BRIDGE_NOT_RECEIVING');
+      return Response.json({ error: { code: stopped ? 'not_receiving' : 'internal_error',
+        message: stopped ? '跨实例绑定当前不接收消息' : '外部消息提交失败' } }, { status: stopped ? 409 : 500 });
     }
-    return Response.json({ ok: true, created: result.created, message: result.message });
   }
 
   async receiveClientAction(request) {

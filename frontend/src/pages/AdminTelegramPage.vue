@@ -138,11 +138,11 @@ onMounted(loadState);
         </div>
         <form class="telegram-mapping-form" @submit.prevent="createMapping">
           <label class="field">
-            <span>{{ t('telegram.edgechatPublicGroup') }}</span>
+            <span>{{ t('telegram.edgechatGroup') }}</span>
             <select v-model="mappingForm.channelId" required>
               <option disabled value="">{{ t('telegram.selectGroup') }}</option>
               <option v-for="channel in state.channels" :key="channel.id" :value="channel.id">
-                {{ channel.name }}
+                {{ channel.name }} ({{ t(channel.kind === 'private' ? 'chat.privateGroup' : 'chat.publicGroup') }})
               </option>
             </select>
           </label>
@@ -165,7 +165,10 @@ onMounted(loadState);
               <tr v-if="loading && !state.mappings.length"><td colspan="4" class="muted">{{ t('telegram.loadingMappings') }}</td></tr>
               <tr v-else-if="!state.mappings.length"><td colspan="4" class="muted">{{ t('telegram.emptyMappings') }}</td></tr>
               <tr v-for="mapping in state.mappings" :key="mapping.id">
-                <td><strong>{{ mapping.channelName }}</strong></td>
+                <td>
+                  <strong>{{ mapping.channelName }}</strong>
+                  <div class="muted">{{ t(mapping.channelKind === 'private' ? 'chat.privateGroup' : 'chat.publicGroup') }}</div>
+                </td>
                 <td>
                   <strong>{{ mapping.telegramChatTitle || t('telegram.unnamedChat') }}</strong>
                   <div class="muted telegram-chat-id">{{ mapping.telegramChatId }}</div>

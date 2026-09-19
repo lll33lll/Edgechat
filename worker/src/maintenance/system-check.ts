@@ -16,6 +16,7 @@ interface MaintenanceEnv {
   CHANNEL_ROOM?: Namespace;
   USER_INBOX?: Namespace;
   SCHEDULER?: Namespace;
+  INSTANCE_BRIDGE?: Namespace;
   [key: string]: unknown;
 }
 type CheckStatus = 'ok' | 'error' | 'missing' | 'disabled' | 'blocked';
@@ -88,16 +89,17 @@ export async function runSystemCheck(env: MaintenanceEnv, { timeoutMs = 8000 } =
     }, timeoutMs);
     return [connectivity, schema];
   };
-  const [dbChecks, kv, r2, room, inbox, scheduler] = await Promise.all([
+  const [dbChecks, kv, r2, room, inbox, scheduler, bridge] = await Promise.all([
     database(),
     env.SESSIONS ? probe('sessions', async () => { await env.SESSIONS?.get('__edgechat_health__'); return {}; }, timeoutMs) : absent('sessions'),
     env.FILES ? probe('files', async () => { await env.FILES?.list({ limit: 1 }); return {}; }, timeoutMs) : absent('files', true),
     checkObject('channelRoom', env.CHANNEL_ROOM, 'ChannelRoom', timeoutMs),
     checkObject('userInbox', env.USER_INBOX, 'UserInbox', timeoutMs),
-    checkObject('scheduler', env.SCHEDULER, 'Scheduler', timeoutMs)
+    checkObject('scheduler', env.SCHEDULER, 'Scheduler', timeoutMs),
+    checkObject('instanceBridge', env.INSTANCE_BRIDGE, 'InstanceBridge', timeoutMs)
   ]);
   const environment = inspectEnvironment(env);
-  const checks: Check[] = [...dbChecks, kv, r2, room, inbox, scheduler, {
+  const checks: Check[] = [...dbChecks, kv, r2, room, inbox, scheduler, bridge, {
     id: 'environment', status: environment.some((item) => item.required && !item.present) ? 'missing' : 'ok',
     code: 'presence_only', durationMs: 0
   }];

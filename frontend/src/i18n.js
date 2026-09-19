@@ -12,6 +12,7 @@ export const LOCALE_OPTIONS = Object.freeze([
 ]);
 
 const STORAGE_KEY = 'edgechat.locale';
+const TRADITIONAL_CHINESE_REGIONS = new Set(['tw', 'hk', 'mo']);
 const localeLoaders = {
   [SIMPLIFIED_CHINESE_LOCALE]: () => import('./locales/zh-CN.js'),
   [TRADITIONAL_CHINESE_LOCALE]: () => import('./locales/zh-TW.js'),
@@ -25,7 +26,14 @@ function normalizeLocale(value) {
 export function detectBrowserLocale(value) {
   const language = String(value || '').replaceAll('_', '-');
   if (!/^zh(?:-|$)/i.test(language)) return ENGLISH_LOCALE;
-  return /(?:^|-)Hant(?:-|$)|(?:^|-)(?:TW|HK|MO)(?:-|$)/i.test(language)
+  const subtags = language.toLowerCase().split('-').slice(1);
+
+  // 脚本标签代表用户明确选择的字形，优先级高于设备地区；CHT/CHS 兼容旧版浏览器标签。
+  if (subtags.includes('hant') || subtags.includes('cht')) return TRADITIONAL_CHINESE_LOCALE;
+  if (subtags.includes('hans') || subtags.includes('chs')) return SIMPLIFIED_CHINESE_LOCALE;
+
+  // 未声明脚本时，台湾、香港、澳门使用繁体，其余中文地区与裸 zh 默认简体。
+  return subtags.some((subtag) => TRADITIONAL_CHINESE_REGIONS.has(subtag))
     ? TRADITIONAL_CHINESE_LOCALE
     : SIMPLIFIED_CHINESE_LOCALE;
 }
@@ -84,18 +92,30 @@ export function initializeI18n() {
   return setLocale(locale.value, { persist: false });
 }
 
+const SQLITE_UTC_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
+
+export function parseDateValue(value) {
+  if (value instanceof Date) return value;
+  // D1 的 CURRENT_TIMESTAMP 是 UTC，但返回值没有时区标记；补成 ISO UTC 后才能按浏览器时区正确展示。
+  const normalizedValue =
+    typeof value === 'string' && SQLITE_UTC_DATE_TIME_PATTERN.test(value)
+      ? `${value.replace(' ', 'T')}Z`
+      : value;
+  return new Date(normalizedValue);
+}
+
 export function formatDateTime(value, options = { dateStyle: 'medium', timeStyle: 'short' }) {
-  const date = value instanceof Date ? value : new Date(value);
+  const date = parseDateValue(value);
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(locale.value, options).format(date);
 }
 
 export function formatDate(value, options = { dateStyle: 'medium' }) {
-  const date = value instanceof Date ? value : new Date(value);
+  const date = parseDateValue(value);
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(locale.value, options).format(date);
 }
 
 export function formatTime(value, options = { hour: '2-digit', minute: '2-digit' }) {
-  const date = value instanceof Date ? value : new Date(value);
+  const date = parseDateValue(value);
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(locale.value, options).format(date);
 }
 

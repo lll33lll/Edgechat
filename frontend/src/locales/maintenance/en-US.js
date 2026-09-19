@@ -27,6 +27,8 @@ export default {
   "maintenance.channelRoom": "ChannelRoom DO",
   "maintenance.userInbox": "UserInbox DO",
   "maintenance.scheduler": "Scheduler DO",
+  "maintenance.instanceBridge": "InstanceBridge DO",
+  "maintenance.method.instanceBridge": "INSTANCE_BRIDGE binding + internal health request",
   "maintenance.environment": "Required environment variables",
   "maintenance.method.d1": "DB binding + SELECT 1",
   "maintenance.method.schema": "Migration ledger and checksums + actual tables / columns / indexes / triggers",

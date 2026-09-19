@@ -7,6 +7,7 @@ import { inspectEnvironment, runSystemCheck } from "../worker/src/maintenance/sy
 import { ChannelRoom } from "../worker/src/do/ChannelRoom.js";
 import { UserInbox } from "../worker/src/do/UserInbox.js";
 import { Scheduler } from "../worker/src/do/Scheduler.js";
+import { InstanceBridge } from "../worker/src/do/InstanceBridge.ts";
 import { authMiddleware, adminMiddleware } from "../worker/src/middleware.js";
 
 const okDb = { prepare: () => ({ all: async () => ({ results: [{ ok: 1 }] }) }) };
@@ -37,7 +38,7 @@ test("DO health requires verified GET and has no storage/alarm side effects", ()
   assert.equal(durableObjectHealth(new Request(request.url, { method: "POST", headers: request.headers }), "ChannelRoom").status, 405);
 });
 
-test("real DO health probes are read-only for ChannelRoom, UserInbox, and Scheduler", async () => {
+test("real DO health probes are read-only for all four Durable Objects", async () => {
   const calls = { storage: 0, alarm: 0, broadcast: 0 };
   const state = {
     getWebSockets: () => [],
@@ -54,7 +55,7 @@ test("real DO health probes are read-only for ChannelRoom, UserInbox, and Schedu
   inbox.broadcast = () => { calls.broadcast++; };
   const scheduler = new Scheduler(state, {});
   const request = () => new Request("https://internal/health", { headers: { "x-cfchat-internal-auth": "worker-verified" } });
-  for (const object of [room, inbox, scheduler]) {
+  for (const object of [room, inbox, scheduler, new InstanceBridge(state, {})]) {
     const response = await object.fetch(request());
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, service: object.constructor.name });
@@ -97,5 +98,5 @@ test("real auth and admin middleware return 401, 403, and allow admins", async (
   const response = await app.request("/api/admin/maintenance", { headers: { Authorization: "Bearer token" } }, adminEnv);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
-  assert.equal((await response.json()).checks.length, 8);
+  assert.equal((await response.json()).checks.length, 9);
 });

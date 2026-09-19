@@ -420,6 +420,7 @@ export function createDemoFixtures() {
           id: 1,
           channelId: 3,
           channelName: 'Telegram 联动',
+          channelKind: 'public',
           telegramChatTitle: 'EdgeChat 演示群',
           telegramChatId: '-1002345678901',
           enabled: true

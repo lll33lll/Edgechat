@@ -12,6 +12,7 @@ import {
 import { parseTelegramMessageUpdate } from "../worker/src/integrations/telegram/parser.js";
 import {
 	formatTelegramMessage,
+	ingestTelegramMessage,
 	splitTelegramFormattedMessage,
 } from "../worker/src/integrations/telegram/bridge.js";
 import {
@@ -457,6 +458,60 @@ test("消息 projection 保留 Telegram 来源而不伪造 EdgeChat 账号", () 
 			attachment: null,
 		},
 	);
+});
+
+test("Telegram 私有群入站使用映射中的真实房间类型", async () => {
+	let roomName = "";
+	let submittedPayload = null;
+	const env = {
+		DB: {
+			prepare() {
+				return {
+					bind() {
+						return this;
+					},
+					async all() {
+						return { results: [] };
+					},
+				};
+			},
+		},
+		CHANNEL_ROOM: {
+			idFromName(name) {
+				roomName = name;
+				return name;
+			},
+			get() {
+				return {
+					async fetch(_url, init) {
+						submittedPayload = JSON.parse(init.body);
+						return Response.json({ ok: true, created: true, message: {} });
+					},
+				};
+			},
+		},
+	};
+
+	await ingestTelegramMessage(env, {
+		mapping: { channelId: 9, channelName: "Private bridge", channelKind: "private" },
+		telegramMessage: {
+			sourceMessageId: "-100900:1",
+			replySourceMessageId: null,
+			telegramChatId: "-100900",
+			telegramMessageId: 1,
+			content: "private inbound",
+			attachment: null,
+			sender: { id: "42", displayName: "Alice", avatarUrl: "" },
+		},
+		botToken: "",
+	});
+
+	assert.equal(roomName, "private:9");
+	assert.deepEqual(submittedPayload.room, {
+		id: 9,
+		kind: "private",
+		name: "Private bridge",
+	});
 });
 
 test("Telegram webhook 公开接收而后台配置仍要求登录", async () => {

@@ -27,6 +27,8 @@ export default {
   "maintenance.channelRoom": "ChannelRoom DO",
   "maintenance.userInbox": "UserInbox DO",
   "maintenance.scheduler": "Scheduler DO",
+  "maintenance.instanceBridge": "InstanceBridge DO",
+  "maintenance.method.instanceBridge": "INSTANCE_BRIDGE binding + 内部 health 请求",
   "maintenance.environment": "必要环境变量",
   "maintenance.method.d1": "DB binding + SELECT 1",
   "maintenance.method.schema": "迁移记录与校验值 + 实际表 / 列 / 索引 / 触发器",

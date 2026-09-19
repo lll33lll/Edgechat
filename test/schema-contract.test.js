@@ -104,6 +104,7 @@ test("full schema executes baseline migration plan into ledger and passes system
     DB: { prepare: (sql) => ({ all: async () => ({ results: rows(db, sql) }) }) },
     SESSIONS: { get: async () => null }, FILES: { list: async () => ({ objects: [] }) },
     CHANNEL_ROOM: namespace('ChannelRoom'), USER_INBOX: namespace('UserInbox'), SCHEDULER: namespace('Scheduler'),
+    INSTANCE_BRIDGE: namespace('InstanceBridge'),
     EDGECHAT_ENCRYPTION_KEYRING: 'presence-only'
   });
   assert.equal(result.status, 'ok');
@@ -147,7 +148,7 @@ test("demo maintenance report uses the generated manifest and matches the produc
   assert.equal(report.status, "ok");
   assert.equal(report.version, `v${project.version}`);
   assert.equal(report.expectedMigration, D1_MIGRATIONS.at(-1).id);
-  assert.deepEqual(report.checks.map((check) => check.id), ["d1", "schema", "sessions", "files", "channelRoom", "userInbox", "scheduler", "environment"]);
+  assert.deepEqual(report.checks.map((check) => check.id), ["d1", "schema", "sessions", "files", "channelRoom", "userInbox", "scheduler", "instanceBridge", "environment"]);
   assert.equal(report.checks.find((check) => check.id === "schema").schema.status, "ok");
 });
 

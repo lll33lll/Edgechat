@@ -10,7 +10,7 @@ export function demoMaintenanceReport() {
   return {
     demo: true, checkedAt: new Date().toISOString(), durationMs: 0, status: 'ok',
     version: `v${manifest.version}`, expectedMigration: schema.expectedMigration,
-    checks: ['d1', 'schema', 'sessions', 'files', 'channelRoom', 'userInbox', 'scheduler', 'environment'].map((id) => ({
+    checks: ['d1', 'schema', 'sessions', 'files', 'channelRoom', 'userInbox', 'scheduler', 'instanceBridge', 'environment'].map((id) => ({
       id, status: 'ok', code: 'ok', durationMs: 0, ...(id === 'schema' ? { schema } : {})
     })),
     environment: [{ name: 'EDGECHAT_ENCRYPTION_KEYRING', required: true, present: true }]

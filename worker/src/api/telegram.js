@@ -159,7 +159,7 @@ export function registerTelegramAdminRoutes(app) {
 		const channelId = Number(payload.channelId);
 		const telegramChatId = String(payload.telegramChatId || "").trim();
 		if (!Number.isInteger(channelId) || channelId <= 0 || !/^-\d+$/.test(telegramChatId)) {
-			return errorResponse("请选择公开群组并填写有效的 Telegram 群 ID");
+			return errorResponse("请选择群组并填写有效的 Telegram 群 ID");
 		}
 
 		try {
@@ -179,7 +179,7 @@ export function registerTelegramAdminRoutes(app) {
 				createdBy: c.get("session").userId,
 			});
 			if (!mappingId) {
-				return errorResponse("公开群组不存在", 404);
+				return errorResponse("群组不存在", 404);
 			}
 			return c.json(await listTelegramBridgeAdminState(c.env));
 		} catch (error) {

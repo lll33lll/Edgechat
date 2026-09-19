@@ -82,6 +82,12 @@ const router = createRouter({
           meta: { admin: true, adminTitleKey: 'admin.nav.telegram', adminIcon: 'telegram', transition: 'page' }
         },
         {
+          path: 'instance-bridge',
+          name: 'admin-instance-bridge',
+          component: () => import('./pages/AdminInstanceBridgePage.vue'),
+          meta: { admin: true, adminTitleKey: 'bridge.title', adminIcon: 'instance-bridge', transition: 'page' }
+        },
+        {
           path: 'maintenance',
           name: 'admin-maintenance',
           component: () => import('./pages/AdminMaintenancePage.vue'),

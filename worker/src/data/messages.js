@@ -89,10 +89,14 @@ export function mapMessage(row, content = row.content, replyTo = null) {
 					: row.sender_avatar_key
 						? publicFileUrl(row.sender_avatar_key)
 						: "",
-				source: isExternal ? row.source : "edgechat",
+			source: isExternal ? row.source : "edgechat",
 			},
-			attachment: mapAttachment(row),
-	};
+				attachment: mapAttachment(row),
+		};
+		if (row.source_instance) {
+			message.sourceInstance = row.source_instance;
+			message.sender.sourceInstance = row.source_instance;
+		}
 	if (row.client_message_id) {
 		message.clientMessageId = row.client_message_id;
 	}
@@ -156,7 +160,7 @@ async function mapDecryptedMessage(env, row) {
 }
 
 const MESSAGE_SELECT = `SELECT
-		  m.id, m.channel_id, m.content, m.attachment_key, m.attachment_name, m.attachment_type,
+			  m.id, m.channel_id, m.content, m.attachment_key, m.attachment_name, m.attachment_type, m.source_instance,
 		  m.attachment_size, m.attachment_kind, m.attachment_duration_ms, m.attachment_waveform,
 		  m.sender_kind, m.external_sender_id, m.external_sender_name,
 		  m.external_sender_avatar_url, m.source, m.source_message_id,
@@ -385,6 +389,8 @@ async function persistMessage(env, {
 	mentionUserIds = [],
 	replyToMessageId = null,
 	replyToSenderId = null,
+	bridgeDelivery = null,
+	sourceInstance = null,
 }) {
 	const isExternal = externalSender !== null;
 	const normalizedSenderId = isExternal ? null : Number(senderId);
@@ -436,8 +442,9 @@ async function persistMessage(env, {
 					   attachment_waveform, sender_kind, external_sender_id,
 						   external_sender_name, external_sender_avatar_url, source, source_message_id,
 						   source_attachment_id, source_attachment_unique_id, client_message_id,
-							   mention_user_ids, reply_to_message_id, reply_to_sender_id
-							 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+								   mention_user_ids, reply_to_message_id, reply_to_sender_id,
+								   bridge_binding_id, bridge_event_id, bridge_sent_at, source_instance, bridge_target_revision
+								 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				)
 			.bind(
 				Number(channelId),
@@ -465,11 +472,22 @@ async function persistMessage(env, {
 							normalizedClientMessageId,
 							storedMentionUserIds,
 							normalizedReplyToMessageId,
-							normalizedReplyToSenderId,
+								normalizedReplyToSenderId,
+								bridgeDelivery?.bindingId || null,
+								bridgeDelivery?.eventId || null,
+								bridgeDelivery?.createdAt || null,
+								sourceInstance,
+								bridgeDelivery?.targetRevision ?? null,
 						)
 			.run();
 		return { message: await getMessageById(env, result.meta.last_row_id), created: true };
-	} catch (error) {
+		} catch (error) {
+			if (bridgeDelivery && String(error).includes("UNIQUE")) {
+				const receipt = await env.DB.prepare(
+					"SELECT 1 FROM bridge_receipts WHERE binding_id = ? AND event_id = ?",
+				).bind(bridgeDelivery.bindingId, bridgeDelivery.eventId).all();
+				if (receipt.results.length) return { message: null, created: false };
+			}
 		if (isR2ObjectUnavailableError(error)) {
 			throw new Error("Attachment is not available");
 		}

@@ -9,7 +9,9 @@ import {
   detectBrowserLocale,
   ENGLISH_LOCALE,
   formatDate,
+  formatDateTime,
   getLocale,
+  parseDateValue,
   setLocale,
   t,
   TRADITIONAL_CHINESE_LOCALE
@@ -38,11 +40,19 @@ test('简繁中文界面支持插值与未知键回退', async () => {
   assert.equal(t('missing.translation.key'), 'missing.translation.key');
 });
 
-test('浏览器语言会区分简繁中文，其余语言默认英文', () => {
-  for (const language of ['zh', 'zh-CN', 'zh-Hans-SG', 'zh-MY']) {
+test('浏览器中文语言按脚本和地区区分简繁，其余语言默认英文', () => {
+  for (const language of ['zh', 'zh-CN', 'zh-SG', 'zh-MY', 'zh-Hans', 'zh-Hans-HK', 'zh-CHS']) {
     assert.equal(detectBrowserLocale(language), CHINESE_LOCALE);
   }
-  for (const language of ['zh-TW', 'zh-Hant-HK', 'zh-MO', 'ZH_hant_tw']) {
+  for (const language of [
+    'zh-TW',
+    'zh-HK',
+    'zh-MO',
+    'zh-Hant',
+    'zh-Hant-CN',
+    'zh-CHT',
+    'ZH_hant_tw'
+  ]) {
     assert.equal(detectBrowserLocale(language), TRADITIONAL_CHINESE_LOCALE);
   }
 
@@ -84,6 +94,17 @@ test('日期格式跟随当前语言', async () => {
   assert.equal(english, new Intl.DateTimeFormat(ENGLISH_LOCALE, options).format(value));
   assert.notEqual(chinese, english);
   await setLocale(CHINESE_LOCALE);
+});
+
+test('D1 时间按 UTC 解析并转换为客户端时区', async () => {
+  const d1Value = '2026-09-16 12:34:56';
+  const isoValue = '2026-09-16T12:34:56.000Z';
+  const options = { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai' };
+
+  assert.equal(parseDateValue(d1Value).toISOString(), isoValue);
+  assert.equal(parseDateValue(isoValue).toISOString(), isoValue);
+  assert.equal(formatDateTime(d1Value, options), formatDateTime(isoValue, options));
+  assert.equal(formatDateTime('not-a-date', options), '');
 });
 
 test('服务端固定与动态错误会按当前语言本地化', async () => {

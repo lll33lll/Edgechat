@@ -21,6 +21,7 @@ import MessageReplyPreview from '../components/chat/MessageReplyPreview.vue';
 import PinnedMessageBar from '../components/chat/PinnedMessageBar.vue';
 import MobileNavigationDrawer from '../components/chat/MobileNavigationDrawer.vue';
 import SenderSourceBadge from '../components/chat/SenderSourceBadge.vue';
+import RoomBridgeNotice from '../components/chat/RoomBridgeNotice.vue';
 import PublicGroupDiscovery from '../components/chat/PublicGroupDiscovery.vue';
 import PublicGroupJoinDialog from '../components/chat/PublicGroupJoinDialog.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
@@ -739,6 +740,7 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
+        <RoomBridgeNotice v-if="activeRoom.kind !== 'dm'" :room-id="Number(activeRoom.id)" />
         <PinnedMessageBar
           v-if="pinnedMessage && activeRoom.kind !== 'dm'"
           :message="pinnedMessage"
@@ -784,7 +786,7 @@ onBeforeUnmount(() => {
             >
 			  <div v-if="activeRoom.kind !== 'dm' && !isOwnMessage(msg)" class="message-sender-name">
                 <span>{{ msg.sender.displayName }}</span>
-                <SenderSourceBadge :source="msg.sender.source" />
+                <SenderSourceBadge :source="msg.sender.source" :instance="msg.sender.sourceInstance" />
 			  </div>
 			  <MessageReplyPreview
 				v-if="msg.replyTo"
