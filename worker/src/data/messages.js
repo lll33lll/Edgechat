@@ -1,4 +1,5 @@
 import { decryptMessageContent, encryptMessageContent } from "../encryption.js";
+import { isUserDisabled } from "../user-status.js";
 import { pickAttachment, publicFileUrl } from "../utils.js";
 import { normalizeMentionUserIds } from "./mentions.js";
 import { fileBelongsToUser, isR2ObjectUnavailableError } from "./uploaded-files.js";
@@ -70,6 +71,27 @@ export function mapMessage(row, content = row.content, replyTo = null) {
 		username: mention.username,
 		displayName: mention.displayName,
 	}));
+	const sender = {
+		kind: isExternal ? "external" : "local",
+		id: isExternal ? String(row.external_sender_id || "") : Number(row.sender_id),
+		username: isExternal ? "" : row.sender_username,
+		displayName: isExternal ? row.external_sender_name : row.sender_display_name,
+		avatarUrl: isExternal
+			? isTelegramExternal
+				? `/api/integrations/telegram/avatar/${row.external_sender_id}`
+				: row.external_sender_avatar_url || ""
+			: row.sender_avatar_key
+				? publicFileUrl(row.sender_avatar_key)
+				: "",
+		source: isExternal ? row.source : "edgechat",
+	};
+	if (!isExternal) {
+		sender.isAdmin = Boolean(Number(row.sender_is_admin));
+		sender.isDisabled = isUserDisabled({
+			is_disabled: row.sender_is_disabled,
+			disabled_until: row.sender_disabled_until,
+		});
+	}
 	const message = {
 		id: Number(row.id),
 		content,
@@ -77,26 +99,13 @@ export function mapMessage(row, content = row.content, replyTo = null) {
 		mentions,
 		createdAt: row.created_at,
 		source: row.source || "edgechat",
-		sender: {
-				kind: isExternal ? "external" : "local",
-				id: isExternal ? String(row.external_sender_id || "") : Number(row.sender_id),
-				username: isExternal ? "" : row.sender_username,
-				displayName: isExternal ? row.external_sender_name : row.sender_display_name,
-				avatarUrl: isExternal
-					? isTelegramExternal
-						? `/api/integrations/telegram/avatar/${row.external_sender_id}`
-						: row.external_sender_avatar_url || ""
-					: row.sender_avatar_key
-						? publicFileUrl(row.sender_avatar_key)
-						: "",
-			source: isExternal ? row.source : "edgechat",
-			},
-				attachment: mapAttachment(row),
-		};
-		if (row.source_instance) {
-			message.sourceInstance = row.source_instance;
-			message.sender.sourceInstance = row.source_instance;
-		}
+		sender,
+		attachment: mapAttachment(row),
+	};
+	if (row.source_instance) {
+		message.sourceInstance = row.source_instance;
+		message.sender.sourceInstance = row.source_instance;
+	}
 	if (row.client_message_id) {
 		message.clientMessageId = row.client_message_id;
 	}
@@ -168,6 +177,8 @@ const MESSAGE_SELECT = `SELECT
 			  m.mention_user_ids, m.reply_to_message_id, m.reply_to_sender_id, m.created_at,
 		  u.id AS sender_id, u.username AS sender_username,
 		  u.display_name AS sender_display_name, u.avatar_key AS sender_avatar_key,
+		  u.is_admin AS sender_is_admin, u.is_disabled AS sender_is_disabled,
+		  u.disabled_until AS sender_disabled_until,
 		  reply.id AS reply_message_id, reply.content AS reply_content,
 		  reply.deleted_at AS reply_deleted_at,
 		  reply.attachment_key AS reply_attachment_key,

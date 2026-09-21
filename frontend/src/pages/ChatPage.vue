@@ -21,6 +21,7 @@ import MessageReplyPreview from '../components/chat/MessageReplyPreview.vue';
 import PinnedMessageBar from '../components/chat/PinnedMessageBar.vue';
 import MobileNavigationDrawer from '../components/chat/MobileNavigationDrawer.vue';
 import SenderSourceBadge from '../components/chat/SenderSourceBadge.vue';
+import SenderTitleBadge from '../components/chat/SenderTitleBadge.vue';
 import RoomBridgeNotice from '../components/chat/RoomBridgeNotice.vue';
 import PublicGroupDiscovery from '../components/chat/PublicGroupDiscovery.vue';
 import PublicGroupJoinDialog from '../components/chat/PublicGroupJoinDialog.vue';
@@ -785,8 +786,9 @@ onBeforeUnmount(() => {
               @pointercancel="cancelMessageLongPress"
             >
 			  <div v-if="activeRoom.kind !== 'dm' && !isOwnMessage(msg)" class="message-sender-name">
-                <span>{{ msg.sender.displayName }}</span>
-                <SenderSourceBadge :source="msg.sender.source" :instance="msg.sender.sourceInstance" />
+				<span>{{ msg.sender.displayName }}</span>
+				<SenderTitleBadge :identity="msg.sender" />
+				<SenderSourceBadge :source="msg.sender.source" :instance="msg.sender.sourceInstance" />
 			  </div>
 			  <MessageReplyPreview
 				v-if="msg.replyTo"

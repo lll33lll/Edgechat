@@ -50,6 +50,8 @@ function internalSender(user) {
     username: user.username,
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
+    isAdmin: Boolean(user.isAdmin),
+    isDisabled: Boolean(user.isDisabled),
     kind: 'user',
     source: 'edgechat'
   };
@@ -153,9 +155,9 @@ export function createDemoFixtures() {
       isMember: true,
       myRole: 'owner',
       canManage: true,
-      memberCount: 4,
-      memberIds: [1, 2, 3, 4],
-      lastMessageAt: '2026-08-14T09:58:00.000Z',
+      memberCount: 5,
+      memberIds: [1, 2, 3, 4, 5],
+      lastMessageAt: '2026-08-14T10:03:00.000Z',
       unreadCount: 0,
       createdAt: '2026-05-18T08:00:00.000Z'
     },
@@ -261,30 +263,37 @@ export function createDemoFixtures() {
           size: 8420
         }
       },
-		{
-			id: 104,
-			content: '所有演示操作都只保存在当前浏览器页面中。',
-			createdAt: '2026-08-14T09:58:00.000Z',
-			sender: internalSender(users[3]),
-			attachment: null
-		},
-		{
-			id: 105,
-			content: '',
-			createdAt: '2026-08-14T10:01:00.000Z',
-			sender: internalSender(users[1]),
-				attachment: {
-					key: DEMO_VOICE_URL,
-					url: DEMO_VOICE_URL,
-					name: 'voice-demo.wav',
-					type: 'audio/wav',
-					size: 25644,
-					kind: 'voice',
-					durationMs: 3200,
-				waveform: [18, 30, 46, 72, 88, 64, 42, 28, 36, 58, 82, 94, 76, 54, 34, 22, 40, 68, 90, 74, 50, 32, 48, 78]
-			}
-		}
-	],
+      {
+        id: 104,
+        content: '所有演示操作都只保存在当前浏览器页面中。',
+        createdAt: '2026-08-14T09:58:00.000Z',
+        sender: internalSender(users[3]),
+        attachment: null
+      },
+      {
+        id: 105,
+        content: '',
+        createdAt: '2026-08-14T10:01:00.000Z',
+        sender: internalSender(users[1]),
+        attachment: {
+          key: DEMO_VOICE_URL,
+          url: DEMO_VOICE_URL,
+          name: 'voice-demo.wav',
+          type: 'audio/wav',
+          size: 25644,
+          kind: 'voice',
+          durationMs: 3200,
+          waveform: [18, 30, 46, 72, 88, 64, 42, 28, 36, 58, 82, 94, 76, 54, 34, 22, 40, 68, 90, 74, 50, 32, 48, 78]
+        }
+      },
+      {
+        id: 106,
+        content: '我先暂停参与讨论，稍后再跟进。',
+        createdAt: '2026-08-14T10:03:00.000Z',
+        sender: internalSender(users[4]),
+        attachment: null
+      }
+    ],
     'private:2': [
       {
         id: 111,

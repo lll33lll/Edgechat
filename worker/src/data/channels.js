@@ -1,4 +1,5 @@
 import { publicFileUrl } from "../utils.js";
+import { isUserDisabled } from "../user-status.js";
 
 function mapVisibleChannel(row) {
 	return {
@@ -120,7 +121,8 @@ export async function listAdminChannels(db, { includeAvatar = true } = {}) {
 export async function listChannelMembers(db, channelId) {
 	const { results } = await db
 		.prepare(
-			`SELECT cm.user_id, cm.role, cm.joined_at, u.username, u.display_name, u.avatar_key
+			`SELECT cm.user_id, cm.role, cm.joined_at, u.username, u.display_name, u.avatar_key,
+			        u.is_admin, u.is_disabled, u.disabled_until
 			 FROM channel_members cm
 			 JOIN users u ON u.id = cm.user_id
 			 WHERE cm.channel_id = ? AND u.deleted_at IS NULL
@@ -133,6 +135,8 @@ export async function listChannelMembers(db, channelId) {
 		username: row.username,
 		displayName: row.display_name,
 		avatarUrl: row.avatar_key ? publicFileUrl(row.avatar_key) : "",
+		isAdmin: Boolean(Number(row.is_admin)),
+		isDisabled: isUserDisabled(row),
 		role: row.role,
 		joinedAt: row.joined_at,
 	}));

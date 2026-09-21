@@ -97,14 +97,15 @@ export function getDemoDirectMessageBlockStatus(dmId, senderId) {
 }
 
 export function getDemoMembers(channel) {
-  return channel.memberIds
-    .map((userId) => findDemoUser(userId))
-    .filter(Boolean)
-    .map((user) => ({
-      ...projectDemoUser(user),
-      role: Number(user.id) === Number(channel.ownerId) ? 'owner' : 'member',
-      joinedAt: channel.createdAt
-    }));
+	  return channel.memberIds
+	    .map((userId) => findDemoUser(userId))
+	    .filter(Boolean)
+	    .map((user) => ({
+	      ...projectDemoUser(user),
+	      isAdmin: Boolean(user.isAdmin),
+	      role: Number(user.id) === Number(channel.ownerId) ? 'owner' : 'member',
+	      joinedAt: channel.createdAt
+	    }));
 }
 
 export function createDemoMessage({

@@ -5,6 +5,7 @@ import UiBadge from '../ui/Badge.vue';
 import UiButton from '../ui/Button.vue';
 import UiSurface from '../ui/Surface.vue';
 import { t } from '../../i18n.js';
+import SenderTitleBadge from './SenderTitleBadge.vue';
 
 defineProps({
   room: {
@@ -65,7 +66,10 @@ const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-memb
           <UiAvatar :src="member.avatarUrl" :fallback="member.displayName" size="sm" />
         </button>
         <div class="member-chip__text">
-          <strong>{{ member.displayName }}</strong>
+          <div class="member-chip__name">
+            <strong>{{ member.displayName }}</strong>
+            <SenderTitleBadge :identity="member" />
+          </div>
           <span>@{{ member.username }}</span>
         </div>
         <div class="member-chip__actions">
@@ -103,6 +107,18 @@ const emit = defineEmits(['close', 'update:inviteUserId', 'invite', 'remove-memb
 </template>
 
 <style scoped>
+.member-chip__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.member-chip__name strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .chat-member-panel__close {
   display: inline-flex;
   align-items: center;

@@ -18,6 +18,14 @@ const messageMarkdown = readFileSync(
 	new URL("../frontend/src/components/chat/MessageMarkdown.vue", import.meta.url),
 	"utf8",
 ).replaceAll("\r\n", "\n");
+const senderTitle = readFileSync(
+	new URL("../frontend/src/components/chat/SenderTitleBadge.vue", import.meta.url),
+	"utf8",
+).replaceAll("\r\n", "\n");
+const memberPanel = readFileSync(
+	new URL("../frontend/src/components/chat/MemberPanel.vue", import.meta.url),
+	"utf8",
+).replaceAll("\r\n", "\n");
 
 function getStyleRule(selector) {
 	const marker = `${selector} {`;
@@ -75,6 +83,15 @@ test("远程头像加载失败时显示姓名缩写", () => {
 	assert.match(avatarComponent, /const showImage = computed/);
 	assert.match(avatarComponent, /failedSrc\.value !== props\.src/);
 	assert.match(avatarComponent, /@error="handleImageError"/);
+});
+
+test("群聊姓名旁按禁言优先级显示 Telegram 式头衔", () => {
+	assert.match(chatPage, /<SenderTitleBadge :identity="msg\.sender" \/>/);
+	assert.match(memberPanel, /<SenderTitleBadge :identity="member" \/>/);
+	assert.ok(senderTitle.indexOf("identity?.isDisabled") < senderTitle.indexOf("identity?.isAdmin"));
+	assert.match(senderTitle, /sender-title--administrator/);
+	assert.match(senderTitle, /sender-title--muted/);
+	assert.match(senderTitle, /border-radius:\s*3px;/);
 });
 
 test("回复气泡显示引用预览并复用消息定位能力", () => {
