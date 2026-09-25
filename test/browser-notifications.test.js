@@ -168,6 +168,55 @@ test("浏览器拒绝通知权限时开关保持禁用", async () => {
 	assert.equal(notifications.notificationsEnabled.value, false);
 });
 
+test("Service Worker 未激活或注册查询失败时使用原有通知", async () => {
+	const { NotificationApi, notifications: shown } = createNotificationApi();
+	NotificationApi.permission = "granted";
+	let registration = null;
+	let registrationLookupFails = false;
+	const browserWindow = {
+		navigator: {
+			serviceWorker: {
+				ready: new Promise(() => {}),
+				async getRegistration() {
+					if (registrationLookupFails) throw new Error("registration unavailable");
+					return registration;
+				},
+			},
+		},
+	};
+	const notifications = useBrowserNotifications({
+		userId: 11,
+		browserWindow,
+		notificationApi: NotificationApi,
+		storage: createStorage(),
+	});
+	await notifications.toggleNotifications();
+	assert.equal(notifications.notifyRoom({ kind: "dm", id: 5, name: "Alice" }), true);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(shown.length, 1);
+
+	registration = { active: { scriptURL: "https://chat.example/sw.js" },
+		async showNotification() { throw new Error("notifications unavailable"); } };
+	assert.equal(notifications.notifyRoom({ kind: "dm", id: 6, name: "Bob" }), true);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(shown.length, 2);
+	assert.equal(shown[1].title, "Bob");
+
+	registrationLookupFails = true;
+	assert.equal(notifications.notifyRoom({ kind: "dm", id: 7, name: "Carol" }), true);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(shown.length, 3);
+
+	registrationLookupFails = false;
+	const swShown = [];
+	registration.showNotification = async (title, options) => swShown.push({ title, options });
+	assert.equal(notifications.notifyRoom({ kind: "dm", id: 8, name: "Dave" }), true);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(shown.length, 3);
+	assert.equal(swShown[0].title, "Dave");
+	assert.deepEqual(swShown[0].options.data, { roomKind: "dm", roomId: 8 });
+});
+
 test("Capacitor 通知复用会话偏好并交给原生插件展示", async () => {
 	const shown = [];
 	const nativeNotifications = {

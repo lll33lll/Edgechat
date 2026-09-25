@@ -1,22 +1,3 @@
-<details>
-<summary><b>📢 EdgeChat パートナーシップ・広告枠</b></summary>
-<br />
-
-EdgeChat は開発者、Cloudflare ユーザー、セルフホストコミュニティを対象としており、現在 GitHub で 666 Star を獲得しています。README も継続的に多くの方に閲覧されています。
-
-製品やサービスが **開発者ツール、クラウドサービス、セルフホストアプリ、オープンソースエコシステム** に関連する場合、README への広告掲載をご検討いただけます。
-
-- **Sponsor — $5 / 月**
-  Sponsors セクションにロゴ、名称、リンクを掲載します。
-- **Featured Sponsor — $10 / 月**
-  より上位の掲載位置、大きなロゴ、1 行の紹介文をご利用いただけます。
-
-読者との関連性を保つため、掲載内容は開発者ツール、クラウドサービス、セルフホスト製品、オープンソースエコシステムに関連するブランドに限定します。
-
-掲載をご希望の場合は、[Telegram コミュニティ](https://t.me/EdgeChatlounge)または [Issue](https://github.com/aozorae/Edgechat/issues) からお問い合わせください。
-
-</details>
-
 <div align="center">
   <img src="Edgechat.png" alt="EdgeChat" width="640" />
 
@@ -315,6 +296,8 @@ Edgechat/
 EdgeChat を支援してくださったすべての貢献者に感謝します：
 
 [![貢献者](https://contrib.rocks/image?repo=aozorae/Edgechat)](https://github.com/aozorae/Edgechat/graphs/contributors)
+
+PWA 対応の [PR #31](https://github.com/aozorae/Edgechat/pull/31) を提出してくださった [@fix221](https://github.com/fix221) に感謝します。
 
 ## Star History
 
