@@ -34,8 +34,10 @@ import { registerUserProfileRoutes } from './api/user-profile.ts';
 import { registerV1Routes } from './api/v1.js';
 import {
   registerTelegramAdminRoutes,
-  registerTelegramPublicRoutes
+  registerTelegramPublicRoutes,
+  registerTelegramNotificationRoutes
 } from './api/telegram.js';
+import { pruneTelegramNotifications, rescueTelegramNotifications } from './integrations/telegram/notifications.js';
 import { ChannelRoom } from './do/ChannelRoom.js';
 import { Scheduler } from './do/Scheduler.js';
 import { UserInbox } from './do/UserInbox.js';
@@ -287,6 +289,7 @@ registerChannelRoutes(app);
 registerAdminRoutes(app);
 registerMaintenanceRoutes(app);
 registerTelegramAdminRoutes(app);
+registerTelegramNotificationRoutes(app);
 registerInstanceBridgeRoutes(app);
 
 app.get('/api/ws/:kind/:id', async (c) => {
@@ -340,9 +343,9 @@ app.onError((error, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(controller, env, ctx) {
-    const tasks = [rescueBridgeDeliveries(env)];
+    const tasks = [rescueBridgeDeliveries(env), rescueTelegramNotifications(env)];
     // 免费账户的 cron 数量是账户级上限；复用 15 分钟触发器，在 UTC 19:00 的轮次追加每日 GC。
-    if (shouldRunDailyGc(controller.scheduledTime)) tasks.push(runScheduledGc(env));
+    if (shouldRunDailyGc(controller.scheduledTime)) tasks.push(runScheduledGc(env), pruneTelegramNotifications(env));
     ctx.waitUntil(Promise.all(tasks));
   }
 };

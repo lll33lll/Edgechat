@@ -256,6 +256,20 @@ export default {
   adminTelegram() {
     return request('/admin/telegram');
   },
+  telegramNotifications() {
+    return request('/me/telegram-notifications');
+  },
+  createTelegramNotificationLink() {
+    return request('/me/telegram-notifications/link', { method: 'POST' });
+  },
+  updateTelegramNotifications(payload) {
+    return request('/me/telegram-notifications', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payload
+    });
+  },
+  disconnectTelegramNotifications() {
+    return request('/me/telegram-notifications', { method: 'DELETE' });
+  },
   saveAdminTelegramConfig(payload) {
     return request('/admin/telegram/config', {
       method: 'PUT',

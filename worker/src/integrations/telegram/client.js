@@ -24,12 +24,13 @@ async function parseTelegramResponse(response) {
 	return result.result;
 }
 
-export async function callTelegramApi(botToken, method, payload = {}) {
+export async function callTelegramApi(botToken, method, payload = {}, options = {}) {
 	const token = validateBotToken(botToken);
 	const response = await fetch(
 		`${TELEGRAM_API_ROOT}/bot${token}/${method}`,
 		{
 			method: "POST",
+			...(options.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(payload),
 		},
@@ -76,16 +77,17 @@ export function sendTelegramText(botToken, {
 	text,
 	parseMode = "HTML",
 	replyToMessageId = null,
+	timeoutMs = 0,
 }) {
 	const payload = {
 		chat_id: String(chatId),
 		text: String(text),
-		parse_mode: parseMode,
 	};
+	if (parseMode) payload.parse_mode = parseMode;
 	if (replyToMessageId) {
 		payload.reply_parameters = { message_id: Number(replyToMessageId) };
 	}
-	return callTelegramApi(botToken, "sendMessage", payload);
+	return callTelegramApi(botToken, "sendMessage", payload, { timeoutMs });
 }
 
 export function getTelegramFile(botToken, fileId) {

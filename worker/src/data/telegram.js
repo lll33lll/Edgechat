@@ -90,6 +90,9 @@ export async function saveTelegramBridgeConfig(env, {
 	webhookUrl,
 	updatedBy,
 }) {
+	const previous = await env.DB.prepare(
+		"SELECT bot_username FROM telegram_bridge_config WHERE id = 1",
+	).first();
 	const [botTokenCiphertext, webhookSecretCiphertext] = await Promise.all([
 		encryptSecretValue(env, botToken, BOT_TOKEN_CONTEXT),
 		encryptSecretValue(env, webhookSecret, WEBHOOK_SECRET_CONTEXT),
@@ -115,6 +118,11 @@ export async function saveTelegramBridgeConfig(env, {
 			Number(updatedBy),
 		)
 		.run();
+	// Telegram chat IDs belong to the configured bot's conversations. A different bot needs new user consent.
+	if (previous && previous.bot_username !== String(botUsername || "")) {
+		await env.DB.prepare("DELETE FROM telegram_notification_users").run();
+		await env.DB.prepare("DELETE FROM telegram_notification_outbox WHERE status != 'sent'").run();
+	}
 }
 
 export async function getTelegramMappingByChatId(db, telegramChatId) {

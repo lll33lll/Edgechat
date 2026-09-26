@@ -12,11 +12,19 @@ import { loadTelegramUserAvatar } from "../integrations/telegram/avatar.js";
 import {
 	getTelegramBot,
 	getTelegramChat,
+	sendTelegramText,
 	setTelegramWebhook,
 	TelegramApiError,
 } from "../integrations/telegram/client.js";
 import { ingestTelegramMessage } from "../integrations/telegram/bridge.js";
 import { parseTelegramMessageUpdate } from "../integrations/telegram/parser.js";
+import {
+	consumeTelegramNotificationLink,
+	createTelegramNotificationLink,
+	disconnectTelegramNotifications,
+	getTelegramNotificationState,
+	updateTelegramNotificationPreferences,
+} from "../integrations/telegram/notifications.js";
 import { errorResponse, parseJsonRequest, randomToken } from "../utils.js";
 
 function webhookUrl(requestUrl) {
@@ -103,7 +111,19 @@ export function registerTelegramPublicRoutes(app) {
 			return errorResponse("Webhook 验证失败", 401);
 		}
 
-		const telegramMessage = parseTelegramMessageUpdate(await parseJsonRequest(c.req.raw));
+		const update = await parseJsonRequest(c.req.raw);
+		if (await consumeTelegramNotificationLink(c.env, update?.message)) {
+			c.executionCtx.waitUntil(
+				sendTelegramText(credentials.botToken, {
+					chatId: update.message.chat.id,
+					text: "EdgeChat 通知已绑定。你可以在 EdgeChat 的设置中管理提醒。",
+					parseMode: null,
+					timeoutMs: 5000,
+				}).catch(() => {}),
+			);
+			return c.json({ ok: true });
+		}
+		const telegramMessage = parseTelegramMessageUpdate(update);
 		if (!telegramMessage) {
 			return c.json({ ok: true });
 		}
@@ -120,6 +140,29 @@ export function registerTelegramPublicRoutes(app) {
 				telegramMessage,
 				botToken: credentials.botToken,
 			});
+		return c.json({ ok: true });
+	});
+}
+
+export function registerTelegramNotificationRoutes(app) {
+	app.get("/api/me/telegram-notifications", async (c) =>
+		c.json(await getTelegramNotificationState(c.env, c.get("session").userId)),
+	);
+	app.post("/api/me/telegram-notifications/link", async (c) => {
+		const url = await createTelegramNotificationLink(c.env, c.get("session").userId);
+		return url ? c.json({ url }) : errorResponse("管理员尚未配置 Telegram Bot", 503);
+	});
+	app.put("/api/me/telegram-notifications", async (c) => {
+		const payload = await parseJsonRequest(c.req.raw);
+		if (typeof payload.dmEnabled !== "boolean" || typeof payload.mentionEnabled !== "boolean") {
+			return errorResponse("通知设置无效");
+		}
+		const userId = c.get("session").userId;
+		await updateTelegramNotificationPreferences(c.env.DB, userId, payload);
+		return c.json(await getTelegramNotificationState(c.env, userId));
+	});
+	app.delete("/api/me/telegram-notifications", async (c) => {
+		await disconnectTelegramNotifications(c.env.DB, c.get("session").userId);
 		return c.json({ ok: true });
 	});
 }

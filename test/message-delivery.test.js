@@ -62,6 +62,7 @@ test("未读投影排除发送者，并行投影所有收件人", async () => {
 	const notifications = [];
 	const resolvers = new Map();
 	const project = createUnreadProjection({
+		async enqueueNotification() {},
 		async listMemberIds() {
 			return [1, 2, 3];
 		},
@@ -178,6 +179,7 @@ test("回复原作者会触发与提及同级的有人@我投影", async () => {
 	const notifications = [];
 	const counted = [];
 	const project = createUnreadProjection({
+		async enqueueNotification() {},
 		async listMemberIds() {
 			return [1, 2, 3];
 		},
@@ -214,4 +216,21 @@ test("回复原作者会触发与提及同级的有人@我投影", async () => {
 	assert.equal(notifications.find((item) => item.userId === 2).payload.replyToMe, true);
 	assert.equal(notifications.find((item) => item.userId === 2).payload.mentionUnreadCount, 1);
 	assert.equal(notifications.find((item) => item.userId === 3).payload.replyToMe, false);
+});
+
+test("外部通知只投递私信和明确提及，不投递普通群消息或自己的消息", async () => {
+	const pushed = [];
+	const project = createUnreadProjection({
+		async listMemberIds() { return [1, 2, 3]; },
+		async countUnread() { return 1; },
+		async countMentions() { return 1; },
+		async notifyInbox() {},
+		async enqueueNotification(_env, event) { pushed.push([event.userId, event.kind]); },
+	});
+	const message = { id: 10, sender: { kind: "local", id: 1 }, mentionUserIds: [2] };
+	await project({ DB: {} }, { room: { id: 3, kind: "private" }, senderId: 1, message });
+	assert.deepEqual(pushed, [[2, "mention"]]);
+	pushed.length = 0;
+	await project({ DB: {} }, { room: { id: 4, kind: "dm" }, senderId: 1, message });
+	assert.deepEqual(pushed, [[2, "dm"], [3, "dm"]]);
 });

@@ -204,6 +204,11 @@ export const D1_MIGRATIONS = [
       "index:idx_instance_bindings_control", "index:idx_bridge_outbox_due", "index:idx_bridge_receipts_expiry",
     ],
   },
+  {
+    id: "2026-09-26-telegram-notifications",
+    file: "worker/migrations/2026-09-26-telegram-notifications.sql",
+    artifacts: ["table:telegram_notification_users", "table:telegram_notification_outbox", "index:idx_telegram_notification_due"],
+  },
 ];
 
 // b3f6855 曾发布、0c13e8f 已撤回的迁移：仅识别历史 ledger，不要求新安装创建废弃表，也不删除旧数据。

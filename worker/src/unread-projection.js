@@ -4,6 +4,7 @@ import {
 	listRoomMemberIds,
 } from "./data/unread.js";
 import { notifyUserInbox } from "./do-bridge.js";
+import { enqueueTelegramNotification } from "./integrations/telegram/notifications.js";
 
 function logProjectionFailure(message, data) {
 	console.warn(JSON.stringify({ message, ...data }));
@@ -15,6 +16,7 @@ export function createUnreadProjection({
 	listMemberIds = listRoomMemberIds,
 	notifyInbox = notifyUserInbox,
 	logFailure = logProjectionFailure,
+	enqueueNotification = enqueueTelegramNotification,
 } = {}) {
 	async function notifyRecipient(env, room, message, userId, replyToSenderId) {
 		try {
@@ -54,6 +56,21 @@ export function createUnreadProjection({
 				userId: Number(userId),
 				error: error instanceof Error ? error.message : String(error),
 			});
+		}
+		if (room.kind === "dm" || (message.mentionUserIds || []).includes(Number(userId))) {
+			try {
+				await enqueueNotification(env, {
+					userId,
+					room,
+					message,
+					kind: room.kind === "dm" ? "dm" : "mention",
+				});
+			} catch (error) {
+				logFailure("telegram notification projection failed", {
+					roomId: Number(room.id), userId: Number(userId),
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 		}
 	}
 

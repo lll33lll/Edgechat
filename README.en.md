@@ -119,6 +119,7 @@ This suits teams and communities that already have Telegram groups but also need
 ### 🔌 Connections and Extensions
 
 - Administrator-configured two-way Telegram bridging for public and private groups, including voice message synchronization.
+- Members can connect the configured Telegram bot in Settings to receive direct-message and group-mention alerts while the site is closed. Each alert type can be disabled independently; alerts do not include message bodies.
 - WebMCP site tools: in compatible client environments, provides login, conversation queries, message reading, sending, and related capabilities.
 
 ## Privacy and Encryption

@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
+import TelegramNotificationSettings from '../components/settings/TelegramNotificationSettings.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
 import LanguageSwitch from '../components/ui/LanguageSwitch.vue';
 import { isCapacitorAndroid, pickNativeFile } from '../capacitor-platform.ts';
@@ -31,7 +32,6 @@ const savingProfile = ref(false);
 const savingPassword = ref(false);
 const uploadingAvatar = ref(false);
 const avatarInputEl = ref(null);
-
 const showCropper = ref(false);
 const cropperCanvas = ref(null);
 const cropZoom = ref(1);
@@ -405,6 +405,7 @@ async function changePassword() {
             {{ savingPassword ? t('settings.updatingPassword') : t('settings.updatePassword') }}
           </button>
         </section>
+        <TelegramNotificationSettings class="settings-section" />
       </div>
 
       <nav class="settings-nav">
@@ -471,7 +472,7 @@ async function changePassword() {
 
 <style scoped>
 .settings-page {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
