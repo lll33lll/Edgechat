@@ -75,3 +75,9 @@ run_worker_first = ["/api/*", "/files/*"]
 [triggers]
 # 单一 15 分钟触发器救援实例桥接；Worker 在 UTC 19:00 的轮次同时执行每日 GC，节省账户级 cron 配额。
 crons = ["*/15 * * * *"]
+
+# ── 部署触发备忘 / deploy trigger memo ──
+# 改动这些路径并 push 到 master 会自动运行 Deploy Worker：
+# worker/**、frontend/**、shared/**、test/**、.github/scripts/**、
+# package.json、package-lock.json、biome.json 或本文件。
+# 手动触发：Actions → Deploy Worker → Run workflow。
