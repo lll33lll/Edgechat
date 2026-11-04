@@ -1,0 +1,74 @@
+name: zz 一次性同步上游 / One-shot upstream sync
+
+# 由 MCP 推这个文件触发（on: push 自身），只做一件事：
+#   把 aozorae/Edgechat 的最新提交合并进 master，并且「不」改 .github/workflows，
+#   以免内置 GITHUB_TOKEN 因为没有 workflows 写权限而被拒。
+# 合并完成后由 MCP 单独推新版的 workflow 文件（那一步会顺带触发 Deploy Worker）。
+# 跑完请把这个文件删掉。
+
+on:
+  push:
+    paths:
+      - ".github/workflows/zz-sync-oneshot.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: zz-sync-oneshot
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: 合并上游（跳过 workflows）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream and push
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          set -u
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/aozorae/Edgechat.git
+          git fetch --no-tags upstream master
+
+          UP=$(git rev-parse --short upstream/master)
+          BEFORE=$(git rev-parse HEAD)
+          echo "fork HEAD = $BEFORE"
+          echo "upstream  = $UP"
+          echo "---- 待合并提交 ----"
+          git log --oneline HEAD..upstream/master | head -40
+
+          if [ -n "$SYNC_TOKEN" ]; then echo "token: SYNC_TOKEN"; else echo "token: 内置 GITHUB_TOKEN"; fi
+
+          # 三方合并，冲突一律以上游为准；不自动提交，先处理 workflows
+          git merge --no-ff --no-commit -X theirs upstream/master || true
+
+          # workflows 保持本 fork 原样：
+          #  - 内置 token 推不动 workflow 文件
+          #  - 本 fork 的 sync-upstream.yml 是他自己那版，别被上游覆盖
+          git checkout "$BEFORE" -- .github/workflows
+
+          git commit -m "chore: 同步上游 aozorae/Edgechat @${UP}（workflow 由 MCP 单独推）"
+
+          echo "---- 合并结果 ----"
+          git --no-pager diff --stat "$BEFORE" HEAD | tail -20
+
+          git push origin HEAD:master
+          echo "✅ 代码已推送"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### 一次性同步" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          git --no-pager log --oneline -3 >> "$GITHUB_STEP_SUMMARY" || true
