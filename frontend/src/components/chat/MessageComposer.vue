@@ -9,15 +9,16 @@ import UiTextarea from "../ui/Textarea.vue";
 import UiAvatar from "../ui/Avatar.vue";
 import PendingAttachmentPreview from "./PendingAttachmentPreview.vue";
 import MessageReplyPreview from "./MessageReplyPreview.vue";
+import { getClipboardFiles } from "./clipboard-files.js";
 
 const props = defineProps({
 	modelValue: {
 		type: String,
 		default: "",
 	},
-	pendingAttachment: {
-		type: Object,
-		default: null,
+	pendingAttachments: {
+		type: Array,
+		default: () => [],
 	},
 	sending: {
 		type: Boolean,
@@ -50,6 +51,7 @@ const emit = defineEmits([
 	"send",
 	"upload",
 	"clear-attachment",
+	"retry-attachment",
 	"voice-recorded",
 	"cancel-reply",
 ]);
@@ -92,8 +94,10 @@ const sendDisabled = computed(
 		props.disabled ||
 		props.sending ||
 		starting.value ||
-		(!props.modelValue.trim() && !props.pendingAttachment),
+		props.pendingAttachments.some((entry) => entry.status !== "ready") ||
+		(!props.modelValue.trim() && !props.pendingAttachments.length),
 );
+const uploading = computed(() => props.pendingAttachments.some((entry) => entry.status === "uploading"));
 // 房间切换或连接失效时不允许继续采集上一段语音。
 watch(() => props.disabled, (disabled) => {
 	if (disabled) void cancel();
@@ -237,6 +241,7 @@ function selectMention(member) {
 }
 
 async function openPicker() {
+	if (props.disabled || props.sending || starting.value) return;
 	pickerError.value = "";
 	if (!isCapacitorAndroid) {
 		fileInput.value?.click();
@@ -252,9 +257,24 @@ async function openPicker() {
 }
 
 function handleFileSelected(event) {
-	const file = event.target.files?.[0];
-	if (file) emit("upload", file);
+	const files = Array.from(event.target.files || []);
+	if (files.length) emit("upload", files);
 	event.target.value = "";
+}
+
+function handlePaste(event) {
+	const files = getClipboardFiles(event.clipboardData);
+	if (!files.length) return;
+	event.preventDefault();
+	if (props.disabled || props.sending || starting.value) return;
+	const text = event.clipboardData.getData("text/plain");
+	if (text) {
+		const input = event.target;
+		input.setRangeText(text, input.selectionStart, input.selectionEnd, "end");
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+	closeMentionMenu();
+	emit("upload", files);
 }
 
 async function startVoiceRecording() {
@@ -350,10 +370,13 @@ onBeforeUnmount(() => {
 				<X :size="18" aria-hidden="true" />
 			</button>
 		</div>
-			<div v-if="pendingAttachment" class="composer-attachment">
+			<div v-if="pendingAttachments.length" class="composer-attachment">
 			<PendingAttachmentPreview
-				:attachment="pendingAttachment"
-				@clear="emit('clear-attachment')"
+				v-for="entry in pendingAttachments"
+				:key="entry.id"
+				:entry="entry"
+				@clear="emit('clear-attachment', entry.id)"
+				@retry="emit('retry-attachment', entry.id)"
 			/>
 		</div>
 			<div v-if="error || recordingError || pickerError" class="composer-error" role="alert">
@@ -401,6 +424,7 @@ onBeforeUnmount(() => {
 			<input
 				ref="fileInput"
 				type="file"
+					multiple
 				class="composer-file-input"
 				@change="handleFileSelected"
 			/>
@@ -426,7 +450,7 @@ onBeforeUnmount(() => {
 					:is="richEditorComponent"
 					ref="richEditor"
 					:model-value="modelValue"
-					:disabled="disabled || starting"
+					:disabled="disabled || sending || starting"
 					:mention-candidates="mentionCandidates"
 					:placeholder="t('chat.messagePlaceholder')"
 					:runtime="richEditorRuntime"
@@ -434,6 +458,7 @@ onBeforeUnmount(() => {
 					@ready="richEditorReady = true"
 					@initialization-error="handleRichEditorInitializationError"
 					@send="requestSend"
+					@upload="emit('upload', $event)"
 				/>
 				<div v-if="!richEditorReady" class="composer-editor-initializing" role="status">
 					<LoaderCircle :size="17" class="composer-spinner" aria-hidden="true" />
@@ -477,7 +502,7 @@ onBeforeUnmount(() => {
 						:aria-label="t('chat.sendMessage')"
 						@click="requestSend"
 					>
-						<LoaderCircle v-if="sending" :size="20" class="composer-spinner" aria-hidden="true" />
+						<LoaderCircle v-if="sending || uploading" :size="20" class="composer-spinner" aria-hidden="true" />
 						<Send v-else :size="20" aria-hidden="true" />
 						<span>{{ t('chat.send') }}</span>
 					</button>
@@ -520,6 +545,7 @@ onBeforeUnmount(() => {
 				@update:model-value="emit('update:modelValue', $event)"
 				@input="syncMentionQuery"
 				@keydown="handleKeydown"
+					@paste="handlePaste"
 				@compositionstart="composing = true"
 				@compositionend="composing = false"
 				/>
@@ -543,7 +569,7 @@ onBeforeUnmount(() => {
 				:aria-label="t('chat.sendMessage')"
 					@click="requestSend"
 			>
-				<LoaderCircle v-if="sending" :size="20" class="composer-spinner" aria-hidden="true" />
+					<LoaderCircle v-if="sending || uploading" :size="20" class="composer-spinner" aria-hidden="true" />
 				<Send v-else :size="20" aria-hidden="true" />
 				<span>{{ t('chat.send') }}</span>
 			</button>
@@ -565,7 +591,11 @@ onBeforeUnmount(() => {
 }
 
 .composer-attachment {
+	display: grid;
+	gap: 8px;
 	min-width: 0;
+	max-height: 200px;
+	overflow-y: auto;
 	margin-bottom: 10px;
 }
 
@@ -623,7 +653,7 @@ onBeforeUnmount(() => {
 	padding: 2px 8px;
 	border: 0;
 	border-radius: 4px;
-	background: rgba(0, 128, 105, 0.1);
+	background: rgba(var(--site-brand-rgb, 0, 128, 105), 0.1);
 	color: var(--chat-accent);
 	font: inherit;
 	font-weight: 600;
@@ -684,7 +714,7 @@ onBeforeUnmount(() => {
 
 .mention-option:hover,
 .mention-option--active {
-	background: #edf8f2;
+	background: var(--site-selected, #edf8f2);
 }
 
 .mention-option__label {
@@ -861,7 +891,7 @@ onBeforeUnmount(() => {
 }
 
 .composer-btn--active {
-	background: rgba(0, 128, 105, 0.1);
+	background: rgba(var(--site-brand-rgb, 0, 128, 105), 0.1);
 	color: var(--chat-accent);
 }
 
@@ -876,8 +906,8 @@ onBeforeUnmount(() => {
 	gap: 6px;
 	padding: 0 12px;
 	border-radius: 22px;
-	background: var(--chat-accent);
-	color: var(--chat-paper);
+	background: var(--site-action-bg, var(--chat-accent));
+	color: var(--site-on-action, var(--chat-paper));
 	font: inherit;
 	font-size: 14px;
 	font-weight: 600;
@@ -886,7 +916,7 @@ onBeforeUnmount(() => {
 }
 
 .composer-send:hover:not(:disabled) {
-	background: var(--chat-accent-hover);
+	background: var(--site-action-hover, var(--chat-accent-hover));
 }
 
 .composer-btn:active:not(:disabled) {
@@ -894,7 +924,7 @@ onBeforeUnmount(() => {
 }
 
 .composer-send:active:not(:disabled) {
-	background: var(--chat-accent-pressed);
+	background: var(--site-action-pressed, var(--chat-accent-pressed));
 }
 
 .composer-btn:focus-visible,

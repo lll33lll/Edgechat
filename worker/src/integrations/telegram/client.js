@@ -2,9 +2,11 @@ const TELEGRAM_API_ROOT = "https://api.telegram.org";
 const TELEGRAM_FILE_ROOT = `${TELEGRAM_API_ROOT}/file`;
 
 export class TelegramApiError extends Error {
-	constructor(message) {
+	constructor(message, { status = 0, retryAfter = 0 } = {}) {
 		super(message);
 		this.name = "TelegramApiError";
+		this.status = status;
+		this.retryAfter = retryAfter;
 	}
 }
 
@@ -19,7 +21,10 @@ function validateBotToken(botToken) {
 async function parseTelegramResponse(response) {
 	const result = await response.json().catch(() => null);
 	if (!response.ok || !result?.ok) {
-		throw new TelegramApiError(result?.description || `Telegram API 请求失败：${response.status}`);
+		throw new TelegramApiError(result?.description || `Telegram API 请求失败：${response.status}`, {
+			status: result?.error_code || response.status,
+			retryAfter: Number(result?.parameters?.retry_after) || 0,
+		});
 	}
 	return result.result;
 }
@@ -77,6 +82,8 @@ export function sendTelegramText(botToken, {
 	text,
 	parseMode = "HTML",
 	replyToMessageId = null,
+	replyMarkup = null,
+	disableLinkPreview = false,
 	timeoutMs = 0,
 }) {
 	const payload = {
@@ -84,6 +91,8 @@ export function sendTelegramText(botToken, {
 		text: String(text),
 	};
 	if (parseMode) payload.parse_mode = parseMode;
+	if (replyMarkup) payload.reply_markup = replyMarkup;
+	if (disableLinkPreview) payload.link_preview_options = { is_disabled: true };
 	if (replyToMessageId) {
 		payload.reply_parameters = { message_id: Number(replyToMessageId) };
 	}

@@ -199,7 +199,8 @@ test("更新状态只挂载在管理员路由保护的网站设置页", () => {
 	assert.match(adminSitePage, /<AdminUpdateStatus\s*\/>/);
 	assert.match(router, /path: '\/admin'[\s\S]*meta: \{ admin: true/);
 	assert.match(router, /path: 'site'[\s\S]*meta: \{ admin: true/);
-	assert.match(router, /to\.meta\.admin && !store\.session\.isAdmin/);
+	assert.match(router, /store\.refreshAuthorization\(\)/);
+  assert.match(router, /canVisit\(to\.path/);
 	assert.match(adminUpdateStatus, /onMounted\(checkUpdates\)/);
 	assert.doesNotMatch(adminUpdateStatus, /setInterval|setTimeout/);
 });

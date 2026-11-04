@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import api from '../api.js';
 import UiButton from '../components/ui/Button.vue';
 import { useI18n } from '../i18n.js';
+import store from '../store.js';
 
 const { locale, t } = useI18n();
 const report = ref(null);
@@ -44,7 +45,7 @@ function exportReport() {
         <p>{{ t('maintenance.description') }}</p>
       </div>
       <div class="maintenance-actions">
-        <UiButton v-if="report" variant="secondary" @click="exportReport">
+        <UiButton v-if="report && store.session?.isSuperAdmin" variant="secondary" @click="exportReport">
           <Download :size="17" aria-hidden="true" />{{ t('maintenance.download') }}
         </UiButton>
         <UiButton :disabled="loading" @click="runChecks">
@@ -72,7 +73,7 @@ function exportReport() {
         </div>
         <dl class="maintenance-versions">
           <div><dt>{{ t('maintenance.version') }}</dt><dd>{{ report.version }}</dd></div>
-          <div>
+          <div v-if="store.session?.isSuperAdmin">
             <dt>{{ t('maintenance.databaseVersion') }}</dt>
             <dd>{{ schema?.appliedMigration || t('maintenance.unknown') }}</dd>
             <p>{{ t('maintenance.expected', { version: report.expectedMigration }) }}</p>
@@ -94,11 +95,11 @@ function exportReport() {
                 <CircleAlert v-else :size="15" aria-hidden="true" />
                 {{ t(`maintenance.status.${check.status}`) }}
               </span>
-              <p v-if="!['ok', 'reachable', 'presence_only'].includes(check.code)" class="maintenance-check-note">{{ t(`maintenance.code.${check.code}`) }}</p>
+              <p v-if="check.code && !['ok', 'reachable', 'presence_only'].includes(check.code)" class="maintenance-check-note">{{ t(`maintenance.code.${check.code}`) }}</p>
             </div>
           </div>
         </div>
-        <details class="maintenance-details" :open="report.status === 'error'">
+        <details v-if="store.session?.isSuperAdmin" class="maintenance-details" :open="report.status === 'error'">
           <summary>{{ t('maintenance.details') }}</summary>
           <template v-if="schema">
             <div v-for="key in detailKeys.filter((key) => schema[key].length)" :key="key" class="maintenance-detail">

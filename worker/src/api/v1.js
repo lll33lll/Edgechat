@@ -1,4 +1,6 @@
 import { verifyPassword } from '../auth.js';
+import { verifyLoginSecurity } from '../login-security.ts';
+import { getLoginVerification } from '../data/login-verification.ts';
 import { saveUploadedFile } from './upload.js';
 import {
   getRoomSyncCursor,
@@ -7,6 +9,7 @@ import {
 } from '../data/messages.js';
 import { getSiteSettings } from '../data/site-settings.js';
 import { getUserByUsername } from '../data/users.js';
+import { recordLoginInfo } from '../data/user-login-info.ts';
 import {
   forwardInboxConnection,
   forwardRoomConnection,
@@ -85,9 +88,10 @@ export function registerV1Routes(app) {
     return c.json({
       apiVersion: 1,
       site,
+      loginVerification: await getLoginVerification(c.env.DB),
       limits: {
         maxUploadBytes: Number(c.env.MAX_FILE_SIZE || 20971520),
-        messageRetentionDays: Number(c.env.MESSAGE_RETENTION_DAYS || 7)
+        messageRetentionDays: Number(c.env.MESSAGE_RETENTION_DAYS || 30)
       },
       features: {
         deviceSessions: true,
@@ -107,6 +111,7 @@ export function registerV1Routes(app) {
     if (!username || !password) {
       return v1ErrorResponse('invalid_credentials', '请输入用户名和密码', 400);
     }
+    await verifyLoginSecurity(c.env, c.req.raw, payload.turnstileToken);
     const user = await getUserByUsername(c.env.DB, username);
     if (
       !user ||
@@ -116,6 +121,7 @@ export function registerV1Routes(app) {
       return v1ErrorResponse('invalid_credentials', '账号或密码错误', 401);
     }
     const result = await createMobileDeviceSession(c.env, user, payload.device);
+    await recordLoginInfo(c.env.DB, user.id, c.req.raw);
     return c.json(result);
   });
 

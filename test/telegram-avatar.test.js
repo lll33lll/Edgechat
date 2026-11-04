@@ -48,6 +48,7 @@ async function createEnv({ knownSender = true } = {}) {
 						return this;
 					},
 					async all() {
+						if (sql.includes("FROM site_settings")) return { results: [] };
 						if (sql.includes("FROM messages")) {
 							const matches = knownSender && this.binds[0] === "telegram" && this.binds[1] === "42";
 							return { results: matches ? [{ found: 1 }] : [] };
@@ -124,12 +125,13 @@ test("Telegram 头像端点选择最大尺寸并写入 Edge Cache", async () => 
 	}
 });
 
-test("非法 Telegram user ID 在查询数据库前直接拒绝", async () => {
+test("非法 Telegram user ID 不查询业务数据（入口只读取隐身设置）", async () => {
 	const response = await worker.fetch(
 		new Request("https://example.com/api/integrations/telegram/avatar/not-a-user"),
 		{
 			DB: {
-				prepare() {
+				prepare(sql) {
+					if (sql.includes("FROM site_settings")) return { async all() { return { results: [] }; } };
 					throw new Error("非法 ID 不应查询数据库");
 				},
 			},

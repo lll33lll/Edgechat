@@ -11,19 +11,19 @@ import {
   storageOwnerFromObjectKey,
   summarizeR2Objects
 } from '../worker/src/storage-statistics.js';
-import { registerAdminRoutes } from '../worker/src/api/admin.js';
+import { registerStorageRoutes } from '../worker/src/api/storage.ts';
 
 function storageScanHandler() {
   let handler;
   const app = {
-    get(path, candidate) {
+    get() {},
+    post(path, candidate) {
       if (path === '/api/admin/storage/scan') handler = candidate;
     },
     patch() {},
-    post() {},
     delete() {}
   };
-  registerAdminRoutes(app);
+  registerStorageRoutes(app);
   return handler;
 }
 
@@ -74,13 +74,10 @@ test('one R2 page is aggregated without exposing object keys', () => {
 });
 
 test('storage scan returns a structured 503 response when R2 is unavailable', async () => {
-  const response = await storageScanHandler()({
+  await assert.rejects(() => storageScanHandler()({
     env: {},
     req: { url: 'https://edgechat.example/api/admin/storage/scan' }
-  });
-
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: '当前部署没有绑定 R2，无法统计存储空间' });
+  }), (error) => error.status === 503 && error.message === '当前部署没有绑定 R2，无法统计存储空间');
 });
 
 test('paged summaries merge and include active zero-usage users', () => {

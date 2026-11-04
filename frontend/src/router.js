@@ -2,18 +2,8 @@ import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router
 import { isCapacitorAndroid } from './capacitor-platform.ts';
 import { isDemoMode } from './runtime.js';
 import store from './store.js';
-import LoginPage from './pages/LoginPage.vue';
-import RegisterPage from './pages/RegisterPage.vue';
-import ChatPage from './pages/ChatPage.vue';
-import AdminPage from './pages/AdminPage.vue';
-import AdminDashboardPage from './pages/AdminDashboardPage.vue';
-import AdminUsersPage from './pages/AdminUsersPage.vue';
-import AdminStoragePage from './pages/AdminStoragePage.vue';
-import AdminInvitesPage from './pages/AdminInvitesPage.vue';
-import AdminSitePage from './pages/AdminSitePage.vue';
-import AdminTelegramPage from './pages/AdminTelegramPage.vue';
-import SettingsPage from './pages/SettingsPage.vue';
 import { addAuthInvalidListener } from './auth-storage.js';
+import { canVisit, firstAdminPage } from './authorization.ts';
 
 const router = createRouter({
   history: isCapacitorAndroid ? createWebHashHistory() : createWebHistory(),
@@ -21,32 +11,44 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: LoginPage,
+      component: () => import('./pages/LoginPage.vue'),
       meta: { public: true, transition: 'page' }
     },
     {
       path: '/register/:token',
       name: 'register',
-      component: RegisterPage,
+      component: () => import('./pages/RegisterPage.vue'),
       meta: { public: true, transition: 'page' }
     },
     {
       path: '/',
       name: 'chat',
-      component: ChatPage,
+      component: () => import('./pages/ChatPage.vue'),
       meta: { transition: 'page', workspace: true }
     },
     {
       path: '/contacts',
       name: 'contacts',
-      component: ChatPage,
+      component: () => import('./pages/ChatPage.vue'),
       meta: { transition: 'page', workspace: true }
     },
     {
       path: '/admin',
-      component: AdminPage,
+      component: () => import('./pages/AdminPage.vue'),
       meta: { admin: true, transition: 'page' },
       children: [
+        {
+          path: 'login-verification', name: 'admin-login-verification', component: () => import('./pages/AdminLoginVerificationPage.vue'),
+          meta: { admin: true, adminTitleKey: 'verification.title', adminIcon: 'login-verification', transition: 'page' }
+        },
+        {
+          path: 'rbac', name: 'admin-rbac', component: () => import('./pages/AdminRbacPage.vue'),
+          meta: { admin: true, adminTitleKey: 'rbac.title', adminIcon: 'rbac', transition: 'page' }
+        },
+        {
+          path: 'channels', name: 'admin-channels', component: () => import('./pages/AdminChannelsPage.vue'),
+          meta: { admin: true, adminTitleKey: 'rbac.channels', adminIcon: 'channels', transition: 'page' }
+        },
         {
           path: '',
           redirect: { name: 'admin-dashboard' }
@@ -54,31 +56,31 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'admin-dashboard',
-          component: AdminDashboardPage,
+          component: () => import('./pages/AdminDashboardPage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.dashboard', adminIcon: 'dashboard', transition: 'page' }
         },
         {
           path: 'users',
           name: 'admin-users',
-          component: AdminUsersPage,
+          component: () => import('./pages/AdminUsersPage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.users', adminIcon: 'users', transition: 'page' }
         },
         {
           path: 'storage',
           name: 'admin-storage',
-          component: AdminStoragePage,
+          component: () => import('./pages/AdminStoragePage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.storage', adminIcon: 'storage', transition: 'page' }
         },
         {
           path: 'invites',
           name: 'admin-invites',
-          component: AdminInvitesPage,
+          component: () => import('./pages/AdminInvitesPage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.invites', adminIcon: 'invites', transition: 'page' }
         },
         {
           path: 'telegram',
           name: 'admin-telegram',
-          component: AdminTelegramPage,
+          component: () => import('./pages/AdminTelegramPage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.telegram', adminIcon: 'telegram', transition: 'page' }
         },
         {
@@ -86,6 +88,12 @@ const router = createRouter({
           name: 'admin-instance-bridge',
           component: () => import('./pages/AdminInstanceBridgePage.vue'),
           meta: { admin: true, adminTitleKey: 'bridge.title', adminIcon: 'instance-bridge', transition: 'page' }
+        },
+        {
+          path: 'stealth',
+          name: 'admin-stealth',
+          component: () => import('./pages/AdminStealthPage.vue'),
+          meta: { admin: true, adminTitleKey: 'stealth.title', adminIcon: 'stealth', transition: 'page' }
         },
         {
           path: 'maintenance',
@@ -96,7 +104,7 @@ const router = createRouter({
         {
           path: 'site',
           name: 'admin-site',
-          component: AdminSitePage,
+          component: () => import('./pages/AdminSitePage.vue'),
           meta: { admin: true, adminTitleKey: 'admin.nav.site', adminIcon: 'site', transition: 'page' }
         }
       ]
@@ -104,7 +112,7 @@ const router = createRouter({
     {
       path: '/settings',
       name: 'settings',
-      component: SettingsPage,
+      component: () => import('./pages/SettingsPage.vue'),
       meta: { transition: 'page' }
     }
   ]
@@ -134,8 +142,9 @@ router.beforeEach(async (to, from) => {
     return '/login';
   }
 
-  if (to.meta.admin && !store.session.isAdmin) {
-    return '/';
+  if (to.meta.admin) {
+    try { await store.refreshAuthorization(); } catch { return '/'; }
+    if (!canVisit(to.path.split('/')[2])) return firstAdminPage();
   }
 
   if (

@@ -56,6 +56,7 @@ export function forwardInboxConnection({ env, request, principal }) {
 		stub: getUserInboxStub(env, principal.userId),
 		request,
 		pathname: "/connect",
+		searchParams: { token: principal.token },
 		principal,
 	});
 }
@@ -67,6 +68,13 @@ export async function notifyUserInbox(env, userId, payload) {
 		body: JSON.stringify(payload),
 	});
 	return response;
+}
+
+export function updateCallLease(env, userId, lease, release = false) {
+  return getUserInboxStub(env, userId).fetch(`${INTERNAL_ORIGIN}/call-${release ? 'release' : 'claim'}`, {
+    method: 'POST', headers: createInternalHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(lease)
+  });
 }
 
 export function submitClientRoomAction(env, { room, principal, action }) {

@@ -1,6 +1,7 @@
+import { authorizationFromRow } from './rbac/authorization.ts';
 const encoder = new TextEncoder();
 
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function toBase64Url(bytes) {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
@@ -76,9 +77,9 @@ export function isConfiguredAdminUsername(env, username) {
   return Boolean(normalizedUsername) && parseAdminUsernames(env).includes(normalizedUsername);
 }
 
-// 权限判定唯一依据：数据库中的 is_admin 字段，不再比对用户名。
+// 兼容客户端的 isAdmin 仅镜像独立超管身份；用户组不能制造全权管理员。
 export function isAdminUser(_env, user) {
-  return Boolean(Number(user?.is_admin));
+  return Boolean(Number(user?.is_super_admin));
 }
 
 function resolveSessionTtl(session, fallback) {
@@ -96,7 +97,7 @@ export async function putSession(env, session, { ttlSeconds = SESSION_TTL_SECOND
   });
 }
 
-export async function createSession(env, user) {
+export async function createSession(env, user, { loginProbeId = '' } = {}) {
   const token = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   const session = {
     token,
@@ -106,7 +107,9 @@ export async function createSession(env, user) {
     bio: user.bio ?? '',
     avatarUrl: user.avatar_key ? `/files/${encodeURIComponent(user.avatar_key)}` : '',
     isAdmin: isAdminUser(env, user),
-    sessionVersion: toSessionVersion(user.session_version)
+    ...authorizationFromRow(user),
+    sessionVersion: toSessionVersion(user.session_version),
+    ...(loginProbeId ? { loginProbeId } : {})
   };
 
   await putSession(env, session);

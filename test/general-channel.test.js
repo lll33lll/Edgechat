@@ -116,17 +116,17 @@ test("成员管理与两个删除入口都会保护 general", async () => {
 		["/api/channels/1", "general 系统群组不能删除"],
 		["/api/admin/channels/1", "general 系统群组不能删除"],
 	]) {
-		const harness = createRouteHarness([[{ id: 1, name: "general", kind: "public" }]]);
+			const harness = createRouteHarness([[{ id: 1, name: "general", kind: "public" }], [{ role: 'owner' }]]);
 		const response = await harness.request(path, { method: "DELETE" });
 		assert.equal(response.status, 400);
 		assert.deepEqual(await response.json(), { error: expectedError });
-		assert.equal(harness.calls.length, 1);
+			assert.equal(harness.calls.length, path.includes('/admin/') ? 1 : 2);
 		assert.equal(harness.calls[0].ran, false);
 	}
 });
 
 test("general 允许更新头像但拒绝改名", async () => {
-	const harness = createRouteHarness([[{ id: 1, name: "general", kind: "public" }]]);
+	const harness = createRouteHarness([[{ id: 1, name: "general", kind: "public" }], [{ role: 'owner' }]]);
 	const response = await harness.request("/api/channels/1", {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
@@ -135,5 +135,5 @@ test("general 允许更新头像但拒绝改名", async () => {
 
 	assert.equal(response.status, 400);
 	assert.deepEqual(await response.json(), { error: "general 系统群组不能改名" });
-	assert.equal(harness.calls.length, 1);
+	assert.equal(harness.calls.length, 2);
 });

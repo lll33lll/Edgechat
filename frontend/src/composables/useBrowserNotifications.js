@@ -170,7 +170,8 @@ export function useBrowserNotifications(options = {}) {
 			return false;
 		}
 
-		const title = event?.replyToMe
+		const callInvite = event?.type === 'call_invite';
+		const title = callInvite ? `${room.name || 'EdgeChat'} · ${t('call.incoming')}` : event?.replyToMe
 			? t("notifications.repliedTitle", { room: room.name || "EdgeChat" })
 			: event?.mentionsMe
 				? t("notifications.mentionedTitle", { room: room.name || "EdgeChat" })
@@ -183,7 +184,7 @@ export function useBrowserNotifications(options = {}) {
 			]
 			.filter(Boolean)
 			.join(": ");
-		const body = needsAttention
+		const body = callInvite ? t('call.voice') : needsAttention
 			? attentionBody ||
 				(event?.replyToMe
 					? t("notifications.repliedBody")

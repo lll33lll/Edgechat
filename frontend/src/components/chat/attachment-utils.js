@@ -41,3 +41,11 @@ export function isPreviewableImageAttachment(attachment) {
   const extension = extensionFrom(attachment.name) || extensionFrom(attachment.url);
   return PREVIEWABLE_IMAGE_EXTENSIONS.has(extension);
 }
+
+export function isVideoAttachment(attachment) {
+  return cleanMimeType(attachment?.type).startsWith('video/');
+}
+
+export function isPdfAttachment(attachment) {
+  return cleanMimeType(attachment?.type) === 'application/pdf';
+}

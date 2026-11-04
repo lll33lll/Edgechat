@@ -22,7 +22,7 @@ const admin = { userId: 1, isAdmin: true };
 function instance(origin, byte = 1) {
   const db = new SQL.Database();
   db.exec(readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8"));
-  db.run(`INSERT INTO users (id, username, display_name, password_hash, password_salt, is_admin)
+  db.run(`INSERT INTO users (id, username, display_name, password_hash, password_salt, is_super_admin)
     VALUES (1, 'admin', '管理员', 'hash', 'salt', 1), (2, 'member', '成员', 'hash', 'salt', 0);
     INSERT INTO channels (id, name, kind, created_by) VALUES (2, '私有群', 'private', 1), (3, '私信', 'dm', 1);
     INSERT INTO channel_members (channel_id, user_id, role) VALUES (2, 1, 'owner');`);

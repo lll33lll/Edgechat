@@ -3,6 +3,7 @@ import { getEdgeChatServerOrigin, resolveServerUrl } from './capacitor-platform.
 import { t } from './i18n.js';
 import { localizedError, localizeErrorMessage } from './localized-error.js';
 import { getRuntimeFileUrl, isDemoMode, requestRuntime } from './runtime.js';
+import { apiPrefix, isGatewayMode } from './gateway.ts';
 
 function buildHeaders(extra = {}) {
   const headers = { ...extra };
@@ -22,7 +23,7 @@ async function request(path, options = {}) {
     }
   }
 
-  const response = await fetch(resolveServerUrl(`/api${path}`), {
+  const response = await fetch(resolveServerUrl(`${apiPrefix}${path}`), {
     ...options,
     headers: buildHeaders(options.headers),
     body:
@@ -45,9 +46,11 @@ async function request(path, options = {}) {
     error.payload = payload;
     error.rawMessage = rawMessage;
 
-    if (response.status === 401 && typeof window !== 'undefined') {
+    if ((response.status === 401 || (isGatewayMode && response.status === 404
+      && !contentType.includes('application/json'))) && typeof window !== 'undefined') {
       dispatchAuthInvalid(error.message);
     }
+    if (response.status === 403 && path.startsWith('/admin/') && typeof window !== 'undefined') window.dispatchEvent(new Event('authorization-changed'));
 
     throw error;
   }
@@ -56,6 +59,40 @@ async function request(path, options = {}) {
 }
 
 export default {
+  loginVerification() { return request('/auth/verification'); },
+  adminLoginVerification() { return request('/admin/login-verification'); },
+  saveAdminLoginVerification(body) {
+    return request('/admin/login-verification', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+  },
+  authorization() { return request('/me/authorization'); },
+  rbacRoles(offset = 0) { return request(`/admin/rbac/roles?offset=${offset}`); },
+  rbacPermissions() { return request('/admin/rbac/permissions'); },
+  rbacMembers(id, offset = 0) { return request(`/admin/rbac/roles/${id}/members?offset=${offset}`); },
+  saveRbacRole(id, body) { return request(`/admin/rbac/roles${id ? `/${id}` : ''}`, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body }); },
+  deleteRbacRole(id) { return request(`/admin/rbac/roles/${id}`, { method: 'DELETE' }); },
+  assignRbacRole(id, body) { return request(`/admin/rbac/users/${id}/role`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body }); },
+  unprotectUser(id, expectedAuthzVersion) { return request(`/admin/rbac/users/${id}/unprotect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: { expectedAuthzVersion } }); },
+  adminAudit(offset = 0) { return request(`/admin/audit?offset=${offset}`); },
+  adminStorage() { return request('/admin/storage'); },
+  callConfig(roomId) {
+    return request(`/calls/${roomId}/config`, { signal: AbortSignal.timeout(10000) });
+  },
+  callAction(roomId, body) {
+    return request(`/calls/${roomId}/action`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(10000), keepalive: ['hangup', 'reject'].includes(body.type)
+    });
+  },
+  callIce(roomId, callId, clientId) {
+    return request(`/calls/${roomId}/ice?${new URLSearchParams({ callId, clientId })}`, { signal: AbortSignal.timeout(15000) });
+  },
+  adminStealth() {
+    return request('/admin/stealth');
+  },
+  saveAdminStealth(enabled) {
+    return request('/admin/stealth', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: { enabled }
+    });
+  },
   instanceBridge(path = '', body) {
     return request(`/admin/instance-bridge${path}`, body ? {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body
@@ -74,11 +111,16 @@ export default {
   logout() {
     return request('/auth/logout', { method: 'POST' });
   },
+  reportLoginNetwork(probeId, result, options) {
+    return request('/auth/login-network', {
+      ...options, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: { probeId, ...result }
+    });
+  },
   session() {
-    return request('/auth/session');
+    return request('/auth/session', { signal: AbortSignal.timeout(10000) });
   },
   getSite() {
-    return request('/site');
+    return request('/site', { signal: AbortSignal.timeout(10000) });
   },
   changePassword(payload) {
     return request('/auth/change-password', {
@@ -99,6 +141,9 @@ export default {
   },
   getContacts(options = {}) {
     return request('/contacts', options);
+  },
+  getBlockedUsers(options = {}) {
+    return request('/users/blocked', options);
   },
   getUserProfile(userId, options = {}) {
     return request(`/users/${encodeURIComponent(userId)}/profile`, options);
@@ -203,14 +248,14 @@ export default {
   },
   getRoomWebSocketUrl(kind, roomId) {
     const token = getStoredToken();
-    const url = new URL(`/api/ws/${kind}/${roomId}`, getEdgeChatServerOrigin());
+    const url = new URL(`${apiPrefix}/ws/${kind}/${roomId}`, getEdgeChatServerOrigin());
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.searchParams.set('token', token || '');
     return url.toString();
   },
   getInboxWebSocketUrl() {
     const token = getStoredToken();
-    const url = new URL('/api/inbox/ws', getEdgeChatServerOrigin());
+    const url = new URL(`${apiPrefix}/inbox/ws`, getEdgeChatServerOrigin());
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.searchParams.set('token', token || '');
     return url.toString();
@@ -233,8 +278,11 @@ export default {
     }
     return resolveServerUrl(url.pathname + url.search);
   },
-  adminUsers() {
-    return request('/admin/users');
+  adminUsers(offset = 0) {
+    return request(`/admin/users?offset=${offset}`);
+  },
+  adminUserDetails(userId, options = {}) {
+    return request(`/admin/users/${userId}/details`, options);
   },
   adminOverview() {
     return request('/admin/overview');
@@ -248,7 +296,7 @@ export default {
       query.set('cursor', cursor);
     }
     const suffix = query.size ? `?${query.toString()}` : '';
-    return request(`/admin/storage/scan${suffix}`);
+    return request(`/admin/storage/scan${suffix}`, { method: 'POST', body: '{}' });
   },
   adminSiteSettings() {
     return request('/admin/site-settings');

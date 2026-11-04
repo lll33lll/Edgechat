@@ -12,11 +12,103 @@ CREATE TABLE IF NOT EXISTS users (
   is_disabled INTEGER NOT NULL DEFAULT 0,
   disabled_until TEXT,
   is_admin INTEGER NOT NULL DEFAULT 0,
+  is_super_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_super_admin IN (0, 1)),
+  management_protected INTEGER NOT NULL DEFAULT 0 CHECK(management_protected IN (0, 1)),
+  authz_version INTEGER NOT NULL DEFAULT 0,
   session_version INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS rbac_roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 80),
+  description TEXT NOT NULL DEFAULT '' CHECK(length(description) <= 500),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+  revision INTEGER NOT NULL DEFAULT 0,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO rbac_roles (id, key, name) VALUES (1, 'ordinary', '普通用户');
+CREATE TABLE IF NOT EXISTS rbac_role_permissions (
+  role_id INTEGER NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+  permission_key TEXT NOT NULL,
+  PRIMARY KEY(role_id, permission_key)
+);
+CREATE TABLE IF NOT EXISTS rbac_user_roles (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  role_id INTEGER NOT NULL DEFAULT 1 REFERENCES rbac_roles(id) ON DELETE RESTRICT,
+  assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rbac_members ON rbac_user_roles(role_id, user_id);
+INSERT OR IGNORE INTO rbac_user_roles (user_id) SELECT id FROM users;
+CREATE TABLE IF NOT EXISTS admin_write_guard (request_id TEXT PRIMARY KEY, ok INTEGER NOT NULL CHECK(ok = 1));
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '{}',
+  result TEXT NOT NULL DEFAULT 'success',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit_log(created_at, id);
+-- 与增量迁移保持同一保留规则，单次清理限量，避免审计写入扩大请求成本。
+CREATE TRIGGER IF NOT EXISTS limit_admin_audit AFTER INSERT ON admin_audit_log BEGIN
+  DELETE FROM admin_audit_log WHERE id IN (SELECT id FROM admin_audit_log
+    WHERE created_at < datetime('now', '-90 days') OR id <= NEW.id - 10000 ORDER BY id LIMIT 100);
+END;
+CREATE TRIGGER IF NOT EXISTS assign_new_user_rbac AFTER INSERT ON users BEGIN
+  INSERT INTO rbac_user_roles (user_id) VALUES (NEW.id);
+END;
+CREATE TRIGGER IF NOT EXISTS protect_default_rbac_update BEFORE UPDATE ON rbac_roles
+WHEN OLD.id = 1 BEGIN SELECT RAISE(ABORT, 'rbac_default_protected'); END;
+CREATE TRIGGER IF NOT EXISTS protect_default_rbac_delete BEFORE DELETE ON rbac_roles
+WHEN OLD.id = 1 BEGIN SELECT RAISE(ABORT, 'rbac_default_protected'); END;
+CREATE TRIGGER IF NOT EXISTS protect_default_rbac_permissions BEFORE INSERT ON rbac_role_permissions
+WHEN NEW.role_id = 1 BEGIN SELECT RAISE(ABORT, 'rbac_default_protected'); END;
+CREATE TRIGGER IF NOT EXISTS protect_super_rbac_assignment BEFORE UPDATE ON rbac_user_roles
+WHEN NEW.role_id != 1 AND EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND is_super_admin = 1)
+BEGIN SELECT RAISE(ABORT, 'rbac_super_group'); END;
+CREATE TRIGGER IF NOT EXISTS protect_last_super_update BEFORE UPDATE ON users
+WHEN OLD.is_super_admin = 1 AND OLD.deleted_at IS NULL AND OLD.is_disabled = 0
+  AND (OLD.disabled_until IS NULL OR OLD.disabled_until <= CURRENT_TIMESTAMP)
+  AND (NEW.is_super_admin = 0 OR NEW.deleted_at IS NOT NULL OR NEW.is_disabled = 1 OR NEW.disabled_until > CURRENT_TIMESTAMP)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id != OLD.id AND is_super_admin = 1 AND deleted_at IS NULL
+    AND is_disabled = 0 AND (disabled_until IS NULL OR disabled_until <= CURRENT_TIMESTAMP))
+BEGIN SELECT RAISE(ABORT, 'rbac_last_super'); END;
+CREATE TRIGGER IF NOT EXISTS protect_last_super_delete BEFORE DELETE ON users
+WHEN OLD.is_super_admin = 1 AND OLD.deleted_at IS NULL AND OLD.is_disabled = 0
+  AND (OLD.disabled_until IS NULL OR OLD.disabled_until <= CURRENT_TIMESTAMP)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id != OLD.id AND is_super_admin = 1 AND deleted_at IS NULL
+    AND is_disabled = 0 AND (disabled_until IS NULL OR disabled_until <= CURRENT_TIMESTAMP))
+BEGIN SELECT RAISE(ABORT, 'rbac_last_super'); END;
+
+-- 每个用户最多三次登录；数据库自动淘汰最旧记录，避免依赖定时扫描和前端清理。
+CREATE TABLE IF NOT EXISTS user_login_info (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ip TEXT NOT NULL CHECK(length(ip) <= 64),
+  login_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_agent TEXT NOT NULL CHECK(length(user_agent) <= 1024),
+  login_probe_id TEXT NOT NULL DEFAULT '',
+  webrtc_ips TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(webrtc_ips) AND json_type(webrtc_ips) = 'array' AND json_array_length(webrtc_ips) <= 4 AND length(webrtc_ips) <= 193),
+  webrtc_status TEXT NOT NULL DEFAULT 'not_run',
+  webrtc_checked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_login_info_recent ON user_login_info(user_id, id DESC);
+CREATE TRIGGER IF NOT EXISTS limit_user_login_info
+AFTER INSERT ON user_login_info
+BEGIN
+  DELETE FROM user_login_info WHERE user_id = NEW.user_id AND id NOT IN (
+    SELECT id FROM user_login_info WHERE user_id = NEW.user_id ORDER BY id DESC LIMIT 3
+  );
+END;
 
 CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -526,12 +618,15 @@ CREATE TABLE IF NOT EXISTS telegram_notification_users (
   pending_expires_at TEXT,
   dm_enabled INTEGER NOT NULL DEFAULT 1 CHECK (dm_enabled IN (0, 1)),
   mention_enabled INTEGER NOT NULL DEFAULT 1 CHECK (mention_enabled IN (0, 1)),
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  next_notification_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
 );
 
 CREATE TABLE IF NOT EXISTS telegram_notification_outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_id INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT '',
   channel_id INTEGER NOT NULL,
   message_id INTEGER NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('dm', 'mention')),
@@ -543,7 +638,32 @@ CREATE TABLE IF NOT EXISTS telegram_notification_outbox (
   UNIQUE(user_id, channel_id, message_id)
 );
 
+-- 每用户仅保留一个短时回复目标；不保存明文，解绑/重绑撤销旧提示。
+CREATE TABLE IF NOT EXISTS telegram_dm_prompts (
+  user_id INTEGER PRIMARY KEY REFERENCES telegram_notification_users(user_id) ON DELETE CASCADE,
+  telegram_chat_id TEXT NOT NULL,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  prompt_message_id INTEGER NOT NULL,
+  request_message_id INTEGER NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS clear_telegram_prompt_after_rebind
+AFTER UPDATE OF telegram_chat_id ON telegram_notification_users
+BEGIN
+  DELETE FROM telegram_dm_prompts WHERE user_id = NEW.user_id;
+END;
+
 CREATE INDEX IF NOT EXISTS idx_telegram_notification_due ON telegram_notification_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_notification_sender ON telegram_notification_outbox(sender_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_notification_recipient ON telegram_notification_outbox(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_notification_created ON telegram_notification_outbox(created_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_notification_message ON telegram_notification_outbox(channel_id, message_id);
+CREATE TABLE IF NOT EXISTS telegram_notification_gate (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_send_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+);
+INSERT OR IGNORE INTO telegram_notification_gate (id) VALUES (1);
 
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
 VALUES ('site_name', 'Edgechat');
@@ -553,6 +673,10 @@ VALUES ('site_icon_url', '');
 
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created
   ON messages(channel_id, id DESC);
+
+-- 会话列表按创建时间取最新存活消息，避免每个房间扫描整段历史。
+CREATE INDEX IF NOT EXISTS idx_messages_channel_live_time
+  ON messages(channel_id, created_at DESC) WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_messages_sender_created
   ON messages(sender_id, id DESC);

@@ -63,7 +63,9 @@ test("编辑器复用 Markdown 草稿、提及候选和原发送快捷键约束"
 	assert.match(editor, /render:\s*\{ media: \{ enable: false \} \}/);
 	assert.match(editor, /mathBlockPreview:\s*false/);
 	assert.match(editor, /codeBlockPreview:\s*false/);
-	assert.doesNotMatch(editor, /"fullscreen"|"upload"|"record"|"export"|"outline"/);
+	const toolbar = editor.match(/toolbar:\s*\[([\s\S]*?)\]/)?.[1];
+	assert.ok(toolbar);
+	assert.doesNotMatch(toolbar, /"fullscreen"|"upload"|"record"|"export"|"outline"/);
 });
 
 test("构建只准备自托管的最小 Vditor 运行时", () => {

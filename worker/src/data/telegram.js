@@ -1,4 +1,5 @@
 import { decryptSecretValue, encryptSecretValue } from "../encryption.js";
+import { managedGroupScope } from '../rbac/authorization.ts';
 
 const BOT_TOKEN_CONTEXT = "telegram:bot-token";
 const WEBHOOK_SECRET_CONTEXT = "telegram:webhook-secret";
@@ -17,7 +18,9 @@ function mapMapping(row) {
 	};
 }
 
-export async function listTelegramBridgeAdminState(env) {
+export async function listTelegramBridgeAdminState(env, actor = { isSuperAdmin: true, userId: 0 }) {
+  const channelsScope = managedGroupScope(actor, 'channels.id');
+  const mappingScope = managedGroupScope(actor, 'c.id');
 	const [configResult, channelsResult, mappingsResult] = await Promise.all([
 		env.DB.prepare(
 			`SELECT bot_username, webhook_url, updated_at
@@ -28,18 +31,18 @@ export async function listTelegramBridgeAdminState(env) {
 		env.DB.prepare(
 			`SELECT id, name, kind
 			 FROM channels
-			 WHERE kind IN ('public', 'private') AND deleted_at IS NULL
-			 ORDER BY CASE WHEN name = 'general' THEN 0 ELSE 1 END, name ASC`,
-		).all(),
+			 WHERE kind IN ('public', 'private') AND deleted_at IS NULL AND ${channelsScope.sql}
+			 ORDER BY CASE WHEN name = 'general' THEN 0 ELSE 1 END, name ASC LIMIT 100`,
+		).bind(...channelsScope.params).all(),
 		env.DB.prepare(
 			`SELECT tm.id, tm.channel_id, c.name AS channel_name, c.kind AS channel_kind,
 			        tm.telegram_chat_id,
 			        tm.telegram_chat_title, tm.enabled, tm.created_at, tm.updated_at
 			 FROM telegram_mappings tm
 			 JOIN channels c ON c.id = tm.channel_id
-			 WHERE c.kind IN ('public', 'private') AND c.deleted_at IS NULL
-			 ORDER BY tm.updated_at DESC, tm.id DESC`,
-		).all(),
+			 WHERE c.kind IN ('public', 'private') AND c.deleted_at IS NULL AND ${mappingScope.sql}
+			 ORDER BY tm.updated_at DESC, tm.id DESC LIMIT 100`,
+		).bind(...mappingScope.params).all(),
 	]);
 
 	const config = configResult.results[0] || null;
@@ -47,7 +50,7 @@ export async function listTelegramBridgeAdminState(env) {
 		config: {
 			configured: Boolean(config),
 			botUsername: config?.bot_username || "",
-			webhookUrl: config?.webhook_url || "",
+			webhookUrl: actor.isSuperAdmin ? config?.webhook_url || "" : "",
 			updatedAt: config?.updated_at || null,
 		},
 		channels: channelsResult.results.map((row) => ({

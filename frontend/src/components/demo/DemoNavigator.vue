@@ -1,5 +1,5 @@
 <script setup>
-import { RotateCcw } from '@lucide/vue';
+import { RotateCcw, Star } from '@lucide/vue';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { resetRuntime } from '../../runtime.js';
@@ -56,6 +56,18 @@ function resetDemo() {
     <button type="button" :title="t('demo.reset')" :aria-label="t('demo.reset')" @click="resetDemo">
       <RotateCcw :size="16" aria-hidden="true" />
     </button>
+    <!-- 演示站访客刚体验完产品，是最可能点 Star 的人群；生产构建会静态删除整个 DemoNavigator。 -->
+    <a
+      class="demo-navigator__star"
+      href="https://github.com/aozorae/Edgechat"
+      target="_blank"
+      rel="noopener noreferrer"
+      :title="t('demo.star')"
+      :aria-label="t('demo.star')"
+    >
+      <Star :size="15" aria-hidden="true" />
+      <span>Star</span>
+    </a>
   </aside>
 </template>
 
@@ -114,6 +126,40 @@ function resetDemo() {
   outline: none;
 }
 
+.demo-navigator__star {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid #d5b65c;
+  border-radius: 8px;
+  background: #fff2c4;
+  color: #73500c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.demo-navigator__star:hover {
+  background: #ffe49a;
+  border-color: #b9912e;
+}
+
+.demo-navigator__star:active {
+  background: #f5d47c;
+}
+
+.demo-navigator__star:focus-visible {
+  outline: 2px solid #73500c;
+  outline-offset: 2px;
+}
+
 @media (max-width: 640px) {
   .demo-navigator {
     top: 68px;
@@ -126,6 +172,16 @@ function resetDemo() {
 
   .demo-navigator select {
     width: 124px;
+  }
+
+  .demo-navigator__star {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .demo-navigator__star span {
+    display: none;
   }
 
   .demo-navigator--admin,
@@ -156,6 +212,7 @@ function resetDemo() {
   /* 成员管理使用整屏覆盖层，演示导航不能浮在其上方抢占触控区域。 */
   body:has(.room-management-layer) .demo-navigator,
   body:has(.composer-rich-editor) .demo-navigator,
+  body:has(.composer-attachment) .demo-navigator,
   body:has(.composer-reply) .demo-navigator {
     display: none;
   }

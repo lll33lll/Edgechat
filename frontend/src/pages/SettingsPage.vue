@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
 import TelegramNotificationSettings from '../components/settings/TelegramNotificationSettings.vue';
+import VisualEffectsSettings from '../components/settings/VisualEffectsSettings.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
 import LanguageSwitch from '../components/ui/LanguageSwitch.vue';
 import { isCapacitorAndroid, pickNativeFile } from '../capacitor-platform.ts';
@@ -13,7 +14,7 @@ import { BIO_MAX_LENGTH, bioLength, normalizeBio } from '../../../shared/user-pr
 const router = useRouter();
 const { t } = useI18n();
 const session = computed(() => store.session);
-const showAdminEntry = computed(() => Boolean(session.value?.isAdmin));
+const showAdminEntry = computed(() => Boolean(session.value?.canAccessAdmin));
 
 const profileForm = reactive({
   displayName: session.value?.displayName || '',
@@ -405,6 +406,7 @@ async function changePassword() {
             {{ savingPassword ? t('settings.updatingPassword') : t('settings.updatePassword') }}
           </button>
         </section>
+        <VisualEffectsSettings class="settings-section" />
         <TelegramNotificationSettings class="settings-section" />
       </div>
 
@@ -477,7 +479,7 @@ async function changePassword() {
   align-items: center;
   justify-content: center;
   padding: 40px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  background: var(--site-background, linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%));
 }
 
 .settings-container {
@@ -492,7 +494,7 @@ async function changePassword() {
     rgba(255, 255, 255, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow:
-    0 24px 60px rgba(91, 141, 191, 0.1),
+    0 24px 60px rgba(var(--site-brand-rgb, 91, 141, 191), 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -517,16 +519,16 @@ async function changePassword() {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #2c4a6e;
+  color: var(--auth-ink, #2c4a6e);
   letter-spacing: -0.02em;
 }
 
 .settings-kicker {
   padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(91, 141, 191, 0.08);
-  border: 1px solid rgba(91, 141, 191, 0.12);
-  color: #5b8dbf;
+  background: rgba(var(--site-brand-rgb, 91, 141, 191), 0.08);
+  border: 1px solid rgba(var(--site-brand-rgb, 91, 141, 191), 0.12);
+  color: var(--site-brand, #5b8dbf);
   font-size: 11px;
   font-weight: 600;
 }
@@ -590,7 +592,7 @@ async function changePassword() {
 
 .avatar-hint {
   font-size: 11px;
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   white-space: nowrap;
 }
 
@@ -623,9 +625,9 @@ async function changePassword() {
 }
 
 .info-banner {
-  background: rgba(91, 141, 191, 0.08);
-  border: 1px solid rgba(91, 141, 191, 0.15);
-  color: #5b8dbf;
+  background: rgba(var(--site-brand-rgb, 91, 141, 191), 0.08);
+  border: 1px solid rgba(var(--site-brand-rgb, 91, 141, 191), 0.15);
+  color: var(--site-brand, #5b8dbf);
 }
 
 .error-banner {
@@ -660,7 +662,7 @@ async function changePassword() {
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.5);
   box-shadow:
-    0 4px 16px rgba(91, 141, 191, 0.04),
+    0 4px 16px rgba(var(--site-brand-rgb, 91, 141, 191), 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
   opacity: 0;
   animation: sectionRise 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -678,9 +680,9 @@ async function changePassword() {
   margin: 0;
   font-size: 14px;
   font-weight: 700;
-  color: #2c4a6e;
+  color: var(--auth-ink, #2c4a6e);
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(91, 141, 191, 0.08);
+  border-bottom: 1px solid rgba(var(--site-brand-rgb, 91, 141, 191), 0.08);
 }
 
 .field-compact {
@@ -692,7 +694,7 @@ async function changePassword() {
 .field-compact span {
   font-size: 11px;
   font-weight: 600;
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -703,7 +705,7 @@ async function changePassword() {
   border-radius: 12px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(255, 255, 255, 0.6);
-  color: #2c4a6e;
+  color: var(--auth-ink, #2c4a6e);
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -711,8 +713,8 @@ async function changePassword() {
 }
 
 .field-compact input:focus {
-  border-color: rgba(91, 141, 191, 0.35);
-  box-shadow: 0 0 0 3px rgba(91, 141, 191, 0.08);
+  border-color: rgba(var(--site-brand-rgb, 91, 141, 191), 0.35);
+  box-shadow: 0 0 0 3px rgba(var(--site-brand-rgb, 91, 141, 191), 0.08);
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -726,18 +728,18 @@ async function changePassword() {
   padding: 10px 20px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(91, 141, 191, 0.85), rgba(69, 121, 186, 0.8));
-  color: #fff;
+  background: var(--site-button-background, linear-gradient(135deg, rgba(91, 141, 191, 0.85), rgba(69, 121, 186, 0.8)));
+  color: var(--site-on-action, #fff);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(91, 141, 191, 0.2);
+  box-shadow: 0 2px 8px rgba(var(--site-brand-rgb, 91, 141, 191), 0.2);
 }
 
 .save-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(91, 141, 191, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--site-brand-rgb, 91, 141, 191), 0.3);
 }
 
 .save-btn:disabled {
@@ -760,9 +762,9 @@ async function changePassword() {
   gap: 6px;
   padding: 8px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(91, 141, 191, 0.1);
+  border: 1px solid rgba(var(--site-brand-rgb, 91, 141, 191), 0.1);
   background: rgba(255, 255, 255, 0.4);
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -771,8 +773,8 @@ async function changePassword() {
 
 .nav-link:hover {
   background: rgba(255, 255, 255, 0.7);
-  border-color: rgba(91, 141, 191, 0.2);
-  color: #2c4a6e;
+  border-color: rgba(var(--site-brand-rgb, 91, 141, 191), 0.2);
+  color: var(--auth-ink, #2c4a6e);
   transform: translateY(-1px);
 }
 
@@ -815,7 +817,7 @@ async function changePassword() {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: #2c4a6e;
+  color: var(--auth-ink, #2c4a6e);
 }
 
 .crop-stage {
@@ -824,7 +826,7 @@ async function changePassword() {
   border-radius: 16px;
   overflow: hidden;
   box-shadow:
-    0 8px 32px rgba(91, 141, 191, 0.15),
+    0 8px 32px rgba(var(--site-brand-rgb, 91, 141, 191), 0.15),
     inset 0 0 0 2px rgba(255, 255, 255, 0.3);
 }
 
@@ -849,7 +851,7 @@ async function changePassword() {
 .crop-controls span {
   font-size: 15px;
   font-weight: 600;
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   flex-shrink: 0;
 }
 
@@ -858,7 +860,7 @@ async function changePassword() {
   height: 6px;
   appearance: none;
   border-radius: 3px;
-  background: rgba(91, 141, 191, 0.15);
+  background: rgba(var(--site-brand-rgb, 91, 141, 191), 0.15);
   outline: none;
 }
 
@@ -867,8 +869,8 @@ async function changePassword() {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #5b8dbf, #4579ba);
-  box-shadow: 0 2px 6px rgba(91, 141, 191, 0.3);
+  background: var(--site-button-background, linear-gradient(135deg, #5b8dbf, #4579ba));
+  box-shadow: 0 2px 6px rgba(var(--site-brand-rgb, 91, 141, 191), 0.3);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -880,7 +882,7 @@ async function changePassword() {
 .crop-hint {
   margin: 0;
   font-size: 13px;
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   text-align: center;
 }
 
@@ -893,10 +895,10 @@ async function changePassword() {
 .crop-cancel {
   flex: 1;
   padding: 14px;
-  border: 1px solid rgba(91, 141, 191, 0.15);
+  border: 1px solid rgba(var(--site-brand-rgb, 91, 141, 191), 0.15);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.5);
-  color: #6b8aab;
+  color: var(--auth-muted, #6b8aab);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
@@ -905,7 +907,7 @@ async function changePassword() {
 
 .crop-cancel:hover {
   background: rgba(255, 255, 255, 0.8);
-  color: #2c4a6e;
+  color: var(--auth-ink, #2c4a6e);
 }
 
 .crop-confirm {
@@ -913,18 +915,18 @@ async function changePassword() {
   padding: 14px;
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(91, 141, 191, 0.85), rgba(69, 121, 186, 0.8));
-  color: #fff;
+  background: var(--site-button-background, linear-gradient(135deg, rgba(91, 141, 191, 0.85), rgba(69, 121, 186, 0.8)));
+  color: var(--site-on-action, #fff);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(91, 141, 191, 0.2);
+  box-shadow: 0 2px 8px rgba(var(--site-brand-rgb, 91, 141, 191), 0.2);
   transition: all 0.2s ease;
 }
 
 .crop-confirm:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(91, 141, 191, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--site-brand-rgb, 91, 141, 191), 0.3);
 }
 
 .modal-enter-active {

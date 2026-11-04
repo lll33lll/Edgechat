@@ -1,10 +1,11 @@
 <script setup>
 import { ArrowDown, ArrowUp, ChevronsUpDown, RefreshCw } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import api from '../api.js';
 import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 import { t } from '../i18n.js';
+import { can } from '../authorization.ts';
 import {
   buildStorageRows,
   formatByteSize,
@@ -94,6 +95,13 @@ function ariaSort(key) {
 function formatShare(value) {
   return `${(Number(value || 0) * 100).toFixed(value > 0 && value < 0.001 ? 2 : 1)}%`;
 }
+onMounted(async () => {
+  try {
+    const payload = await api.adminStorage();
+    users.value = payload.users; mergeStorageSummary(summaries.value, payload.items);
+    refreshedAt.value = payload.scannedAt; hasResult.value = Boolean(payload.scannedAt);
+  } catch (e) { error.value = e.message; }
+});
 </script>
 
 <template>
@@ -103,7 +111,7 @@ function formatShare(value) {
         <h2>{{ t('storage.title') }}</h2>
         <p>{{ t('storage.description') }}</p>
       </div>
-      <UiButton variant="secondary" :disabled="loading" @click="refreshStorage">
+      <UiButton v-if="can('storage.scan')" variant="secondary" :disabled="loading" @click="refreshStorage">
         <RefreshCw :size="17" aria-hidden="true" :class="{ 'admin-spin': loading }" />
         {{ loading ? t('common.refreshing') : t('common.refresh') }}
       </UiButton>

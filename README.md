@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="Edgechat.png" alt="EdgeChat" width="640" />
+  <img src="Edgechat.jpg" alt="EdgeChat" width="640" />
+
+  <p>
+    <a href="https://trendshift.io/repositories/140939?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-140939" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/140939/daily?language=JavaScript" alt="aozorae%2FEdgechat | Trendshift" width="250" height="55"/></a>
+  </p>
 
   <h3>自己的聊天空间，不必从维护服务器开始。</h3>
   <p>基于 Cloudflare 的开源自部署团队聊天系统</p>
@@ -54,26 +58,58 @@
 
 刷新页面或点击右上角「重置演示数据」即可恢复初始状态。演示操作不会访问正式 Worker，也不会写入 D1、KV 或 R2。
 
-## 为什么是 EdgeChat
-
-EdgeChat 面向这样一种需求：**想拥有一个自己的聊天空间，又不想为此长期维护服务器、数据库和一整套运行环境。**
-
-| 你关心的事情 | EdgeChat 的做法 |
-|---|---|
-| 部署和维护 | 基于 Cloudflare Workers，无需另行维护常驻服务器；支持 GitHub Actions 自动部署 |
-| 成员与管理 | 提供独立账号、公开与私有群组、私信和管理后台 |
-| 已有的 Telegram 群 | 通过 Bot 双向桥接，让两侧成员继续使用各自习惯的入口 |
-| 自己修改与扩展 | 源码开放，可以按自己的需求调整界面和功能 |
-
-项目本身免费开源。云服务费用取决于 Cloudflare 的套餐、资源配置和实际用量。
-
-## 跨实例群组绑定
-
-从 `2.8.0` 起，两个独立 EdgeChat 站点的管理员可以在后台左侧栏「跨实例群组绑定」中选择公开、私有或 general 群组，以 **10 分钟一次性邀请 → 对端选群认领 → 发起方核对并确认** 的流程建立双向文字同步。每群最多绑定一个远端群，私信不可绑定。
-
-只同步生效后的本站原创纯文字及昵称、来源实例；不回填历史，不同步附件、引用关系、编辑或撤回。暂停会取消积压，恢复只同步新世代消息；解绑后不再启动新投递，在途消息可能完成，已送达副本不会自动删除。后台可查看队列、失败原因与丢弃计数。
-
-正常 Actions 部署会先应用数据库迁移，再发布带 `INSTANCE_BRIDGE` DO 的 Worker，无需新增手动 Secret，**必须保留现有加密 keyring**。详情见 [绑定操作与部署指南](https://echat.azora.top/guide/instance-bridge) 和 [协议与可靠性约定](docs/api/instance-bridge-v1.md)。
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <b>✈️ Telegram 双向桥接</b><br />
+      群组一键绑定 Telegram 群，文字、图片、视频、语音、文件双向同步。Telegram 成员无需注册账号，消息带 <code>TG</code> 来源标识。
+    </td>
+    <td width="50%" valign="top">
+      <b>🌐 跨实例群组互联</b><br />
+      两个独立部署的 EdgeChat 站点可绑定同一个群，新消息双向同步。邀请码一次性、10 分钟有效，双方管理员确认后生效。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>🤖 WebMCP 站点工具</b><br />
+      兼容的 AI 客户端可直接登录站点、查询会话、读取和发送消息，让 AI 助手成为聊天室的一等公民。
+    </td>
+    <td width="50%" valign="top">
+      <b>🎙️ 语音沟通</b><br />
+      语音消息支持录制、波形进度与倍速播放；私信支持一对一语音通话，默认 P2P 直连，失败时自动回落 TURN 中继。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>🔐 消息与附件加密</b><br />
+      新消息正文和新上传附件使用 AES-256-GCM 服务端加密，密钥版本化管理，支持一键增量轮换，旧密文不受影响。
+    </td>
+    <td width="50%" valign="top">
+      <b>🙈 后台不看正文</b><br />
+      管理员后台不提供任何消息正文的搜索或会话查看入口，只展示消息数量等聚合统计，把隐私边界做进产品里。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>☁️ 零服务器运维</b><br />
+      全部运行在你自己的 Cloudflare 账号里。GitHub Actions 自动部署，并可每日检查上游稳定版与安全更新、自动合并发布。
+    </td>
+    <td width="50%" valign="top">
+      <b>🛡️ 邀请制与精细管控</b><br />
+      不开放自助注册，由管理员创建账号或发送邀请；支持永久封禁与按天/时/分钟设置的临时封禁，到期自动解除。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>🔔 Telegram 离线提醒</b><br />
+      成员可在设置中绑定 Bot，接收仅含正文前 8 个字符及站内查看链接的私信和 @ 提醒。在 Bot 输入 /chats 后点选私聊联系人，即可回复提示发送文字，无需记忆用户 ID。
+    </td>
+    <td width="50%" valign="top">
+      <b>🪟 全端一致的体验</b><br />
+      Liquid Glass 风格界面，适配桌面与移动端；支持 PWA 安装，并提供可自填服务地址的 Android 客户端。
+    </td>
+  </tr>
+</table>
 
 ## Telegram 双向桥接
 
@@ -95,34 +131,6 @@ EdgeChat 面向这样一种需求：**想拥有一个自己的聊天空间，又
   <sub>两个聊天入口，同一段讨论。</sub>
 </div>
 
-## 功能特性
-
-### 💬 聊天与会话
-
-- 公开群组、私有群组和一对一私信。
-- 实时消息、历史消息分页、语音消息与文件分享。
-- 消息回复、引用跳转、@ 提及与回复提醒。
-- 私信联系人拉黑与解除拉黑；拉黑期间双方均无法继续发送私信。
-- 支持定时硬删除过期消息。
-
-### 🎨 日常使用体验
-
-- Liquid Glass 风格界面，适配桌面和移动端。
-- 语音录制、波形进度与倍速播放。
-- 网页前台提供站内消息通知；后台可使用浏览器系统通知，需要用户授权。
-- 用户可在设置页绑定管理员配置的 Telegram Bot，在关闭网页后接收私信和群聊 @ 提醒，并分别开关两类通知。提醒不包含消息正文；Telegram 暂时失败时会有限重试。
-- 文件上传、头像管理与基础无障碍支持。
-
-### 🛠 实例管理
-
-- 仪表盘、用户管理、注册邀请与网站设置。
-- 支持永久封禁和按天、小时、分钟设置临时封禁；临时封禁到期后自动恢复，无需额外定时任务。
-- 在浏览器端直接比对源码仓库，检查当前部署是否有更新。
-
-### 🔌 连接与扩展
-
-- 公开与私有群组均可由管理员配置 Telegram 双向消息桥接，并支持语音消息同步。
-- WebMCP 站点工具：在兼容的客户端环境中，提供登录、查询会话、读取与发送消息等能力。
 
 ## 隐私与加密
 
@@ -134,7 +142,7 @@ EdgeChat 对**新写入的消息正文和新上传的附件**使用 AES-256-GCM 
 > **这是服务端加密，不是端到端加密。**
 > Worker 在通过会话权限校验后解密内容，Cloudflare 运行环境和掌握密钥的部署方仍需要被信任。后台没有消息查看入口，不代表部署者在技术上无法访问内容。
 >
-> 开启 Telegram 桥接后，被转发的消息也会进入对应的 Telegram 会话。
+> Telegram 群组桥接仍将完整消息同步到 Telegram；私人通知仅发送正文前 8 个 Unicode 字符及无登录凭据的会话链接，附件不显示名称。短预览仍是明文，短消息可能完整显示，已发送的旧全文副本不会自动撤回；站内仍采用服务端加密存储。私人通知可单独关闭，解绑可同时停止通知与 Bot 私聊发送。
 
 <details>
 <summary><strong>密钥管理与轮换说明</strong></summary>
@@ -153,7 +161,7 @@ GitHub Actions 会管理服务端加密 Worker Secrets。首次部署时，如�
 
 首次部署会直接采用该值。
 
-已有 Worker 需要自动增量轮换时，手动运行 `Deploy Worker` 并勾选 `rotate_encryption_key`。工作流只新增一个版本化密钥 Secret，并把 active key ID 切换到新版本；所有旧 Secret 和旧 JSON 密钥环都保持不变。新消息使用新密钥，旧密文继续使用各自信封中的 key ID 解密。
+已有 Worker 需要自动增量轮换时，手动运行 `00 Deploy Worker` 并勾选 `rotate_encryption_key`。工作流只新增一个版本化密钥 Secret，并把 active key ID 切换到新版本；所有旧 Secret 和旧 JSON 密钥环都保持不变。新消息使用新密钥，旧密文继续使用各自信封中的 key ID 解密。
 
 `apply_encryption_keyring` 是备用的手动覆盖入口。使用时，Repository Secret 中必须是完整 JSON 密钥环，`keys` 需要保留所有仍被历史密文引用的旧 key ID，再增加新 key 并更新 `activeKeyId`。
 
@@ -177,11 +185,21 @@ GitHub Actions 会管理服务端加密 Worker Secrets。首次部署时，如�
 
 ## 部署
 
+**首次登录：没有默认管理员密码，建表 SQL 不会创建账号，也不开放公开注册。** Actions 部署请配置 `EDGECHAT_ADMIN_USERNAME` / `EDGECHAT_ADMIN_PASSWORD` Repository Secrets；手动部署请生成并执行管理员初始化 SQL。完整命令及漏配处理见[首次管理员初始化](docs/admin-bootstrap.md)。管理员登录后可创建用户或注册邀请。
+
 ### GitHub Actions 自动部署
 
-推荐使用仓库内置的 GitHub Actions 工作流进行部署和后续更新。
+管理员忘记密码时，更新仓库的 `EDGECHAT_ADMIN_PASSWORD` Secret 并重新运行 `00 Deploy Worker` 即可恢复。每次部署以该 Secret 为准；密码改变会使旧会话失效，同密码不影响会话，不会自动提权或解封。详见[管理员初始化与密码恢复](docs/admin-bootstrap.md)。
 
-按照文档完成 Cloudflare 授权与仓库配置后，可以手动运行 `Deploy Worker`，也可以通过向 `master` 或 `main` 分支推送代码触发部署。工作流文件为 `.github/workflows/deploy-worker.yml`。
+消息默认保留 **30 天**，超过保留期后由每日定时任务分批自动删除；`MESSAGE_RETENTION_DAYS` 可自定义，已有显式配置不会因升级改变，已删除消息无法恢复。
+
+推荐使用仓库内置的 GitHub Actions 工作流进行部署和后续更新。`Sync Upstream` 每天检查两次，仅自动合并带 `EdgeChat-Update: stable` / `security` 尾行标记的上游发布并显式触发部署；首次启用、同步令牌及 `MESSAGE_RETENTION_DAYS` 配置见[自动更新说明](docs/auto-update.md)。
+
+Fork 后首次进入自己的仓库 `Actions` 页面，先按 GitHub 提示启用工作流，再选择列表靠前的 **`00 Deploy Worker`** 并点击 **`Run workflow`**。`00` 前缀随 Fork 继承，用于默认名称排序，不依赖主仓的置顶设置；部署网站无需运行其他工作流。
+
+按照文档完成 Cloudflare 授权与仓库配置后，可以手动运行 `00 Deploy Worker`，也可以通过向 `master` 或 `main` 分支推送代码触发部署。工作流文件为 `.github/workflows/deploy-worker.yml`。
+
+登录默认启用 Workers 原生限流；可选的 Cloudflare Turnstile 登录验证默认关闭，在后台「集成 → 登录验证」开启。配置 Secret、手动部署 binding 和旧客户端兼容边界见[登录验证与限流](docs/login-verification.md)。
 
 **[快速开始](https://echat.azora.top/guide/getting-started.html) · [GitHub Actions 部署教程](https://echat.azora.top/guide/actions-deploy.html)**
 

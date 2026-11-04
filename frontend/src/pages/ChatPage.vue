@@ -1,30 +1,21 @@
 <script setup>
-import { ArrowLeft, Ban, Bell, BellOff, ContactRound, Menu, MessageCircle, Settings, UsersRound } from '@lucide/vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { ArrowLeft, Ban, Bell, BellOff, ContactRound, Menu, MessageCircle, Phone, Settings, UsersRound } from '@lucide/vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   consumeNativeRoomTarget,
+  isCapacitorAndroid,
   NATIVE_ROOM_OPEN_EVENT
 } from '../capacitor-platform.ts';
 import { isDemoMode } from '../runtime.js';
-import AddConversationDialog from '../components/chat/AddConversationDialog.vue';
 import ConversationList from '../components/chat/ConversationList.vue';
-import CreateGroupDialog from '../components/chat/CreateGroupDialog.vue';
-import GroupSettingsDialog from '../components/chat/GroupSettingsDialog.vue';
 import InAppNotificationStack from '../components/chat/InAppNotificationStack.vue';
-import MemberPanel from '../components/chat/MemberPanel.vue';
-import MessageAttachment from '../components/chat/MessageAttachment.vue';
+import MessageList from '../components/chat/MessageList.vue';
 import MessageComposer from '../components/chat/MessageComposer.vue';
-import MessageMarkdown from '../components/chat/MessageMarkdown.vue';
 import MessageContextMenu from '../components/chat/MessageContextMenu.vue';
-import MessageReplyPreview from '../components/chat/MessageReplyPreview.vue';
 import PinnedMessageBar from '../components/chat/PinnedMessageBar.vue';
-import MobileNavigationDrawer from '../components/chat/MobileNavigationDrawer.vue';
-import SenderSourceBadge from '../components/chat/SenderSourceBadge.vue';
-import SenderTitleBadge from '../components/chat/SenderTitleBadge.vue';
 import RoomBridgeNotice from '../components/chat/RoomBridgeNotice.vue';
 import PublicGroupDiscovery from '../components/chat/PublicGroupDiscovery.vue';
-import PublicGroupJoinDialog from '../components/chat/PublicGroupJoinDialog.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
 import LanguageSwitch from '../components/ui/LanguageSwitch.vue';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
@@ -39,17 +30,32 @@ import { useMessageContextMenu } from '../composables/useMessageContextMenu.ts';
 import { useRoomManagement } from '../composables/useRoomManagement.js';
 import { useUnreadInbox } from '../composables/useUnreadInbox.js';
 import { useUserBlock } from '../composables/useUserBlock.ts';
+import { useVoiceCall } from '../composables/useVoiceCall.ts';
+import VoiceCallBar from '../components/chat/VoiceCallBar.vue';
 import { resolveMentionUserIds } from '../mentions.ts';
 import store from '../store.js';
 import api from '../api.js';
-import UserProfileDialog from '../components/chat/UserProfileDialog.vue';
-import ContactsPage from './ContactsPage.vue';
 import { useUserProfile } from '../composables/useUserProfile.ts';
 import { useI18n } from '../i18n.js';
 
+import '../styles/chat.css';
+import '../styles/chat-messages.css';
+import '../styles/chat-attachments.css';
+import '../styles/chat-theme.css';
+import '../styles/voice-call.css';
+
+const AddConversationDialog = defineAsyncComponent(() => import('../components/chat/AddConversationDialog.vue'));
+const CreateGroupDialog = defineAsyncComponent(() => import('../components/chat/CreateGroupDialog.vue'));
+const GroupSettingsDialog = defineAsyncComponent(() => import('../components/chat/GroupSettingsDialog.vue'));
+const MemberPanel = defineAsyncComponent(() => import('../components/chat/MemberPanel.vue'));
+const MobileNavigationDrawer = defineAsyncComponent(() => import('../components/chat/MobileNavigationDrawer.vue'));
+const PublicGroupJoinDialog = defineAsyncComponent(() => import('../components/chat/PublicGroupJoinDialog.vue'));
+const UserProfileDialog = defineAsyncComponent(() => import('../components/chat/UserProfileDialog.vue'));
+const ContactsPage = defineAsyncComponent(() => import('./ContactsPage.vue'));
+
 const router = useRouter();
 const route = useRoute();
-const { formatTime: formatLocaleTime, t } = useI18n();
+const { t } = useI18n();
 const error = ref('');
 const activeRoom = ref(null);
 const replyingTo = ref(null);
@@ -58,7 +64,7 @@ const showMobileNavigation = ref(false);
 const publicGroupPreview = ref(null);
 const joiningPublicGroup = ref(false);
 const session = computed(() => store.session);
-const showAdminEntry = computed(() => Boolean(session.value?.isAdmin));
+const showAdminEntry = computed(() => Boolean(session.value?.canAccessAdmin));
 const isContactsView = computed(() => route.name === 'contacts');
 const contactsVisited = ref(isContactsView.value);
 const inboxActiveRoom = computed(() => isContactsView.value ? null : activeRoom.value);
@@ -127,7 +133,8 @@ function openInAppNotification(notification) {
 const {
   isBlockedByMe: activeDmBlockedByMe,
   saving: userBlockSaving,
-  toggleUserBlock
+  toggleUserBlock,
+  applyBlockState
 } = useUserBlock({ activeRoom, dms, error });
 
 function handleRoomActivity({ room, message }) {
@@ -152,12 +159,12 @@ function handleRoomAccessRevoked(room) {
 }
 
 const {
-  messages, pinnedMessage, highlightedMessageId, loading, wsStatus, composerText, pendingAttachment, sending,
-  messagesEl, isOwnMessage,
+  messages, pinnedMessage, highlightedMessageId, loading, refreshing, refreshFailed, wsStatus, composerText, pendingAttachments, sending,
+  messagesEl,
 	  loadMessages, activateRoom, deactivateRoom, pauseRoom, disconnectSocket, sendMessage, sendVoiceMessage, deleteMessage,
 	  pinMessage, unpinMessage, revealPinnedMessage,
 	  revealMessage,
-  uploadAttachment, clearAttachment, loadOlder
+  uploadAttachment, clearAttachment, retryAttachment, retryMessage, loadOlder
 } = useChatRoom({
   activeRoom,
   session,
@@ -167,21 +174,28 @@ const {
   onRoomAccessRevoked: handleRoomAccessRevoked
 });
 
+const voiceCall = useVoiceCall({ userId: session.value?.userId, error,
+  shouldRing: call => !isRoomMuted({ kind: 'dm', id: call.roomId }),
+  notifyIncoming: call => notifyRoom({ type: 'call_invite', room: { kind: 'dm', id: call.roomId, name: call.name } })
+});
+const callState = voiceCall.state;
+const callMode = voiceCall.mode;
 const { connectUnreadInbox, disconnectUnreadInbox } = useUnreadInbox({
   activeRoom: inboxActiveRoom,
   markConversationRead,
   applyConversationActivity,
   notifyInApp: notifyInAppRoom,
-  notifySystem: notifyRoom
+  notifySystem: notifyRoom,
+  onCallEvent: voiceCall.receive
 });
 
 const wsConnected = computed(() => wsStatus.value === 'open');
 const activeRoomSubtitle = computed(() => roomSubtitle(activeRoom.value, wsConnected.value));
 const canModerateMessages = computed(
-  () => Boolean(session.value?.isAdmin || canManageActiveRoom.value)
+  () => Boolean(activeRoom.value?.kind !== 'dm' && canManageActiveRoom.value)
 );
 const canPinMessages = computed(
-  () => Boolean(activeRoom.value?.kind !== 'dm' && (session.value?.isAdmin || canManageActiveRoom.value))
+  () => Boolean(activeRoom.value?.kind !== 'dm' && canManageActiveRoom.value)
 );
 const {
   messageMenu,
@@ -352,7 +366,7 @@ function toggleActiveRoomMute() {
   if (activeRoom.value) toggleRoomMuted(activeRoom.value);
 }
 
-function logout() { store.logout(); router.push('/login'); }
+async function logout() { await voiceCall.hangup(); await store.logout(); router.push('/login'); }
 function openAdmin() { router.push('/admin'); }
 function openSettings() { router.push('/settings'); }
 function openChat() { router.push('/'); }
@@ -467,6 +481,7 @@ async function copySelectedMessage() {
 }
 
 onMounted(() => {
+  window.addEventListener('pagehide', voiceCall.hangup);
   startViewportSync();
   window.addEventListener('focus', syncNotificationPermission);
   window.addEventListener(NATIVE_ROOM_OPEN_EVENT, openNativeRoom);
@@ -476,11 +491,10 @@ onMounted(() => {
     openNativeRoom();
   });
 });
-function formatBubbleTime(value) {
-  return value ? formatLocaleTime(value) : '';
-}
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', voiceCall.hangup);
+  void voiceCall.hangup();
   closeUserProfile();
   cancelMessageLongPress();
   nativeRoomNavigationReady = false;
@@ -491,6 +505,24 @@ onBeforeUnmount(() => {
   disconnectSocket();
   stopViewportSync();
 });
+// 首次使用后保留弹窗实例，关闭时才能完成退场动画并恢复触发按钮焦点。
+const visitedOverlays = reactive(new Set());
+watch(
+  () => ({
+    mobileNavigation: showMobileNavigation.value,
+    userProfile: showUserProfile.value,
+    addConversation: showAddConversation.value,
+    createGroup: showCreateGroup.value,
+    publicGroupJoin: publicGroupPreview.value,
+    groupSettings: showGroupEditor.value,
+  }),
+  (states) => {
+    for (const [name, open] of Object.entries(states)) {
+      if (open) visitedOverlays.add(name);
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -500,6 +532,7 @@ onBeforeUnmount(() => {
       'chat-layout--mobile': isMobileViewport,
       'chat-layout--mobile-list': isMobileViewport && mobileView === 'list',
       'chat-layout--mobile-chat': isMobileViewport && mobileView === 'chat',
+      'chat-layout--calling': Boolean(callState.call),
       'chat-layout--contacts': isContactsView
     }"
   >
@@ -530,6 +563,16 @@ onBeforeUnmount(() => {
           >
             <ContactRound :size="20" aria-hidden="true" />
             <span class="right-sidebar-action__label">{{ t('contacts.title') }}</span>
+          </button>
+          <button
+            type="button"
+            class="right-sidebar-action right-sidebar-action--labeled right-sidebar-action--settings tooltip"
+            :data-tooltip="t('nav.personalSettings')"
+            :aria-label="t('nav.personalSettings')"
+            @click="openSettings"
+          >
+            <Settings :size="20" aria-hidden="true" />
+            <span class="right-sidebar-action__label">{{ t('nav.personalSettings') }}</span>
           </button>
           <button
             type="button"
@@ -641,14 +684,16 @@ onBeforeUnmount(() => {
     <ContactsPage
       v-if="contactsVisited"
       v-show="isContactsView"
+      :visible="isContactsView"
       @open-navigation="showMobileNavigation = true"
       @open-profile="openLocalUserProfile"
+      @unblocked="applyBlockState($event, false)"
     />
 
     <!-- Right Main Chat Window -->
     <main v-if="!isContactsView" class="chat-main">
       <template v-if="activeRoom">
-        <header class="chat-header">
+        <header class="chat-header" :class="{ 'chat-header--dm': activeRoom.kind === 'dm' && !isCapacitorAndroid }">
           <button
             type="button"
             class="chat-header__back"
@@ -679,6 +724,12 @@ onBeforeUnmount(() => {
             <span>{{ activeRoomSubtitle }}</span>
           </div>
           <div class="chat-header__actions">
+            <div v-if="activeRoom.kind === 'dm' && !isCapacitorAndroid" class="chat-call-controls">
+              <button type="button" class="chat-header__button" :title="t('call.voice')" :aria-label="t('call.voice')" :disabled="Boolean(callState.call) || activeDmBlockedByMe" @click="voiceCall.start(activeRoom)"><Phone :size="19" aria-hidden="true" /></button>
+              <select class="chat-call-mode" :value="callMode" :aria-label="t('call.mode')" :title="t('call.mode')" :disabled="['permission', 'calling'].includes(callState.phase)" @change="voiceCall.changeMode($event.target.value)">
+                <option value="auto">P2P</option><option value="relay">TURN</option>
+              </select>
+            </div>
             <div
               class="chat-header__status"
               :class="wsConnected ? 'online' : 'offline'"
@@ -750,63 +801,28 @@ onBeforeUnmount(() => {
           @unpin="unpinMessage(pinnedMessage.id)"
         />
 
+        <div v-if="refreshing || refreshFailed" class="messages-refresh-status" role="status">
+          <span>{{ refreshing ? t('common.refreshing') : t('chat.refreshFailed') }}</span>
+          <button v-if="refreshFailed" type="button" @click="loadMessages()">{{ t('common.retry') }}</button>
+        </div>
         <section ref="messagesEl" class="chat-messages">
-          <button v-if="messages.length" type="button" class="load-more-btn" @click="loadOlder">{{ t('chat.loadEarlier') }}</button>
-          <div v-if="loading" class="messages-hint">{{ t('chat.loadingMessages') }}</div>
-          <div v-else-if="!messages.length" class="messages-hint">{{ t('chat.noMessages') }}</div>
+          <button v-if="messages.length" type="button" class="load-more-btn" :disabled="loading" @click="loadOlder">{{ t('chat.loadEarlier') }}</button>
+          <div v-if="loading && !refreshing" class="messages-hint">{{ t('chat.loadingMessages') }}</div>
+          <div v-else-if="!messages.length && !loading && !refreshFailed" class="messages-hint">{{ t('chat.noMessages') }}</div>
 
-          <article
-            v-for="msg in messages" :key="msg.id"
-            :data-message-id="msg.id"
-            class="message-row"
-			:class="{
-			  'message-row--own': isOwnMessage(msg),
-			  'message-row--actionable': true
-			}"
-          >
-            <button
-              v-if="!isOwnMessage(msg)"
-              type="button"
-              class="profile-avatar-trigger message-avatar-trigger"
-              :aria-label="t('profile.view', { name: msg.sender.displayName })"
-              @click="openSenderProfile(msg.sender)"
-            >
-              <UiAvatar class="message-avatar" :src="msg.sender.avatarUrl" :alt="msg.sender.displayName" :fallback="msg.sender.displayName" size="sm" />
-            </button>
-            <div
-              class="message-bubble"
-              :class="{
-                'message-bubble--with-attachment': msg.attachment,
-                'message-bubble--highlighted': Number(highlightedMessageId) === Number(msg.id)
-              }"
-              @contextmenu="openMessageContextMenu($event, msg)"
-              @pointerdown="startMessageLongPress($event, msg)"
-              @pointermove="trackMessageLongPress"
-              @pointerup="cancelMessageLongPress"
-              @pointercancel="cancelMessageLongPress"
-            >
-			  <div v-if="activeRoom.kind !== 'dm' && !isOwnMessage(msg)" class="message-sender-name">
-				<span>{{ msg.sender.displayName }}</span>
-				<SenderTitleBadge :identity="msg.sender" />
-				<SenderSourceBadge :source="msg.sender.source" :instance="msg.sender.sourceInstance" />
-			  </div>
-			  <MessageReplyPreview
-				v-if="msg.replyTo"
-				class="message-bubble__reply"
-				:reply="msg.replyTo"
-				:clickable="!msg.replyTo.deleted"
-				@reveal="revealMessage(msg.replyToMessageId)"
-			  />
-			  <MessageMarkdown
-				v-if="msg.content"
-				:content="msg.content"
-				:mentions="msg.mentions"
-				:current-user-id="session?.userId"
-			  />
-              <MessageAttachment v-if="msg.attachment" :attachment="msg.attachment" />
-              <span class="message-time">{{ formatBubbleTime(msg.createdAt) }}</span>
-            </div>
-          </article>
+          <MessageList
+            :messages="messages"
+            :current-user-id="session?.userId"
+            :is-direct="activeRoom.kind === 'dm'"
+            :highlighted-message-id="highlightedMessageId"
+            @profile="openSenderProfile"
+            @retry="retryMessage"
+            @reveal="revealMessage"
+            @contextmenu="openMessageContextMenu"
+            @long-press="startMessageLongPress"
+            @track-press="trackMessageLongPress"
+            @cancel-press="cancelMessageLongPress"
+          />
         </section>
 
         <MessageContextMenu
@@ -828,7 +844,7 @@ onBeforeUnmount(() => {
 		<MessageComposer
 		  ref="messageComposer"
 		  v-model="composerText"
-		  :pending-attachment="pendingAttachment"
+		  :pending-attachments="pendingAttachments"
 		  :sending="sending"
 			  :disabled="!activeRoom || activeDmBlockedByMe"
 			  :error="error"
@@ -840,6 +856,7 @@ onBeforeUnmount(() => {
 			  @cancel-reply="replyingTo = null"
 		  @upload="uploadAttachment"
 		  @clear-attachment="clearAttachment"
+		  @retry-attachment="retryAttachment"
 		/>
       </template>
 
@@ -879,7 +896,9 @@ onBeforeUnmount(() => {
       </aside>
     </div>
 
+    <VoiceCallBar :state="callState" @accept="voiceCall.accept" @hangup="voiceCall.hangup" @mute="voiceCall.toggleMute" @play="voiceCall.play" />
     <MobileNavigationDrawer
+      v-if="visitedOverlays.has('mobileNavigation')"
       :show="showMobileNavigation"
       :session="session"
       :show-admin="showAdminEntry"
@@ -897,6 +916,7 @@ onBeforeUnmount(() => {
     />
 
     <UserProfileDialog
+      v-if="visitedOverlays.has('userProfile')"
       :show="showUserProfile"
       :identity="profileIdentity"
       :profile="userProfile"
@@ -912,6 +932,7 @@ onBeforeUnmount(() => {
       @edit="editProfile"
     />
     <AddConversationDialog
+      v-if="visitedOverlays.has('addConversation')"
       :show="showAddConversation"
       :users="usersWithoutDm"
       :opening-dm-user-id="openingDmUserId"
@@ -922,6 +943,7 @@ onBeforeUnmount(() => {
     />
 
     <CreateGroupDialog
+      v-if="visitedOverlays.has('createGroup')"
       :show="showCreateGroup"
       :users="users"
       :form="createGroupForm"
@@ -933,6 +955,7 @@ onBeforeUnmount(() => {
     />
 
     <PublicGroupJoinDialog
+      v-if="visitedOverlays.has('publicGroupJoin')"
       :show="Boolean(publicGroupPreview)"
       :channel="publicGroupPreview"
       :joining="joiningPublicGroup"
@@ -941,6 +964,7 @@ onBeforeUnmount(() => {
     />
 
     <GroupSettingsDialog
+      v-if="visitedOverlays.has('groupSettings')"
       :show="showGroupEditor"
       :room="activeRoom"
       :form="groupSettingsForm"
@@ -968,10 +992,16 @@ onBeforeUnmount(() => {
   height: var(--chat-viewport-height, 100dvh);
   min-height: 100dvh;
   overflow: hidden;
-  background: var(--chat-canvas);
+  background: var(--site-background, var(--chat-canvas));
   color: var(--chat-ink);
   font-family: var(--chat-font);
   letter-spacing: normal;
+}
+
+.chat-layout--calling {
+  top: calc(var(--chat-viewport-offset-top, 0px) + 64px);
+  height: calc(var(--chat-viewport-height, 100dvh) - 64px);
+  min-height: 0;
 }
 
 .left-sidebar {
@@ -1192,6 +1222,10 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
+.right-sidebar-action--settings .right-sidebar-action__label {
+  white-space: normal;
+}
+
 .tooltip {
   position: relative;
 }
@@ -1233,7 +1267,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--chat-canvas);
+  background: var(--site-background, var(--chat-canvas));
 }
 
 .chat-header {
@@ -1412,95 +1446,25 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
-.message-row {
+.messages-refresh-status {
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  margin-bottom: 16px;
-  width: 100%;
-  justify-content: flex-start;
-}
-
-.message-row--own {
-  justify-content: flex-end;
-}
-
-.message-bubble--highlighted {
-  outline: 3px solid rgba(0, 128, 105, 0.3);
-  outline-offset: 3px;
-  transition: outline-color 180ms ease;
-}
-
-.message-avatar-trigger {
-  position: relative;
-  min-width: 34px;
-  min-height: 34px;
-}
-/* 扩大触摸命中区域，但保留原有 34px 头像与气泡排版。 */
-.message-avatar-trigger::before {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-}
-.message-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  box-shadow: none;
-}
-
-.message-bubble {
-  min-width: 0;
-  max-width: min(76%, 620px);
-  padding: 10px 12px 8px;
-  border-radius: 14px 14px 14px 4px;
-  background: var(--chat-paper);
-  border: none;
-  position: relative;
-  word-break: break-word;
-  box-shadow: var(--chat-shadow);
-}
-
-.message-row--actionable .message-bubble {
-  touch-action: pan-y;
-  -webkit-touch-callout: none;
-}
-
-.message-bubble--with-attachment {
-  padding-bottom: 20px;
-}
-
-.message-row--own .message-bubble {
-  background: var(--chat-outgoing);
-  border-radius: 14px 14px 4px 14px;
-}
-
-.message-sender-name {
-  display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--chat-accent);
-  margin-bottom: 4px;
-  overflow-wrap: anywhere;
-  min-width: 0;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  color: var(--chat-subtle);
+  font-size: 12px;
 }
 
-.message-time {
-  position: absolute;
-  right: 8px;
-  bottom: 6px;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--chat-muted);
-  white-space: nowrap;
-  user-select: none;
-}
-
-.message-bubble__reply {
-	margin-bottom: 5px;
+.messages-refresh-status button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--chat-ink);
+  font: inherit;
+  cursor: pointer;
 }
 
 .chat-empty {
@@ -1742,15 +1706,6 @@ onBeforeUnmount(() => {
     scrollbar-gutter: auto;
   }
 
-  .message-row {
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .message-bubble {
-    max-width: calc(100% - 44px);
-  }
-
   .room-management-layer {
     position: fixed;
     inset: 0;
@@ -1782,9 +1737,6 @@ onBeforeUnmount(() => {
     gap: 4px;
   }
 
-  .message-bubble {
-    max-width: calc(100% - 40px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1792,8 +1744,7 @@ onBeforeUnmount(() => {
   .right-sidebar-action,
   .right-sidebar-user,
   .tooltip::after,
-  .chat-header__button,
-  .message-bubble--highlighted {
+  .chat-header__button {
     transition: none;
   }
 }

@@ -29,6 +29,16 @@ export default defineConfig({
   },
   build: {
     outDir: resolve(dirname, 'dist'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            // 共用摇树后的图标集合，避免每个小图标都产生独立请求。
+            { name: 'icons', test: /node_modules[\\/]@lucide[\\/]vue[\\/]/ }
+          ]
+        }
+      }
+    }
   }
 });

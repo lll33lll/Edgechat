@@ -1,5 +1,6 @@
 import { publicFileUrl } from "../utils.js";
 import { activeUserSql, projectUserBan } from "../user-status.js";
+import { AUTHORIZATION_COLUMNS, AUTHORIZATION_JOIN, authorizationFromRow } from '../rbac/authorization.ts';
 
 function mapUserSummary(row) {
 	return {
@@ -19,21 +20,24 @@ export async function getUserProfile(db, userId) {
 	return row ? { ...mapUserSummary(row), bio: row.bio } : null;
 }
 
-function mapAdminUser(row) {
+function mapAdminUser(row, includePermissions) {
+	const { permissions, ...identity } = authorizationFromRow(row);
 	return {
 		...mapUserSummary(row),
 		...projectUserBan(row),
 		createdAt: row.created_at,
+		...identity,
+		...(includePermissions ? { permissions } : {}),
 	};
 }
 
 export async function getUserByUsername(db, username) {
 	const { results } = await db
 		.prepare(
-			`SELECT *
-			 FROM users
-			 WHERE username = ?
-			   AND deleted_at IS NULL
+				`SELECT u.*, ${AUTHORIZATION_COLUMNS}
+				 FROM users u ${AUTHORIZATION_JOIN}
+				 WHERE u.username = ?
+				   AND u.deleted_at IS NULL
 			 LIMIT 1`,
 		)
 		.bind(username)
@@ -84,16 +88,18 @@ export async function listContacts(db) {
 	return results.map(mapUserSummary);
 }
 
-export async function listAdminUsers(db) {
+export async function listAdminUsers(db, offset = 0, actor = null) {
 	const { results } = await db
 		.prepare(
-			`SELECT id, username, display_name, avatar_key, is_disabled, disabled_until, created_at
-			 FROM users
-			 WHERE deleted_at IS NULL
-			 ORDER BY created_at DESC`,
+				`SELECT u.id, u.username, u.display_name, u.avatar_key, u.is_disabled, u.disabled_until, u.created_at,
+           ${AUTHORIZATION_COLUMNS}
+				 FROM users u ${AUTHORIZATION_JOIN}
+				 WHERE u.deleted_at IS NULL
+				 ORDER BY u.created_at DESC, u.id DESC LIMIT 100 OFFSET ?`,
 		)
+			.bind(offset)
 		.all();
-	return results.map(mapAdminUser);
+	return results.map((row) => mapAdminUser(row, actor?.isSuperAdmin));
 }
 
 export async function listStorageOwners(db) {

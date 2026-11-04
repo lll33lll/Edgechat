@@ -21,6 +21,7 @@ export function registerUserProfileRoutes(app: Hono) {
 			return errorResponse("参数无效");
 		}
 		const updates: string[] = [];
+      if (Object.keys(payload).some((key) => !['displayName', 'bio', 'avatarKey'].includes(key))) return errorResponse('请求包含不允许修改的字段');
 		const binds: (string | null)[] = [];
 		if (Object.hasOwn(payload, "displayName")) {
 			if (typeof payload.displayName !== "string" || !payload.displayName.trim()) {

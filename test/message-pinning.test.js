@@ -66,7 +66,7 @@ test("置顶引用随消息软删除和硬删除清理，但不改变消息保�
 	assert.equal(await getPinnedMessage(env, 2), null);
 });
 
-test("群主和站点管理员可置顶群消息，普通成员与私信均被拒绝", async () => {
+test("仅群主可置顶群消息，后台管理员、普通成员与私信均被拒绝", async () => {
 	const { env } = createEnvironment();
 	const ownerMeta = {
 		room: { id: 2, kind: "private" },
@@ -79,12 +79,11 @@ test("群主和站点管理员可置顶群消息，普通成员与私信均被�
 		message: pinned.message,
 	});
 
-	const adminPinned = await pinRoomMessage(
+	await assert.rejects(() => pinRoomMessage(
 		env,
 		{ room: { id: 2, kind: "private" }, principal: { userId: 1, isAdmin: true } },
 		{ messageId: 11 },
-	);
-	assert.equal(adminPinned.message.id, 11);
+	), MessagePinningError);
 
 	await assert.rejects(
 		pinRoomMessage(

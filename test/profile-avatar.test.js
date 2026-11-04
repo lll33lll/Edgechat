@@ -25,6 +25,7 @@ test("个人资料接口清除头像时同步数据库与会话", async () => {
 		},
 		DB: {
 			prepare(sql) {
+					if (sql.includes("FROM site_settings")) return { async all() { return { results: [] }; } };
 				return {
 					bind(...binds) {
 						return {
@@ -32,14 +33,14 @@ test("个人资料接口清除头像时同步数据库与会话", async () => {
 									if (sql.includes("SELECT id, username, display_name, avatar_key, bio")) {
 										return { results: [{ id: 7, username: "alice", display_name: "Alice", avatar_key: null, bio: "" }] };
 									}
-								if (sql.includes("SELECT username, is_disabled")) {
+                if (sql.includes("SELECT u.username, u.is_disabled")) {
 									return {
 										results: [{
 											username: "alice",
 											is_disabled: 0,
 											deleted_at: null,
 											session_version: 0,
-											is_admin: 0,
+											is_super_admin: 0,
 										}],
 									};
 								}

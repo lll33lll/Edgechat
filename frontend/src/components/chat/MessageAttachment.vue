@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import api from '../../api.js';
 import { useOverlayLifecycle } from '../../composables/useOverlayLifecycle.js';
 import { t } from '../../i18n.js';
-import { isPreviewableImageAttachment } from './attachment-utils.js';
+import { isPdfAttachment, isPreviewableImageAttachment, isVideoAttachment } from './attachment-utils.js';
 import { isAudioAttachment } from '../../voice-message.js';
 import VoiceMessage from './VoiceMessage.vue';
 
@@ -19,6 +19,9 @@ const previewEl = ref(null);
 const imageFailed = ref(false);
 const isImage = computed(() => isPreviewableImageAttachment(props.attachment));
 const isAudio = computed(() => isAudioAttachment(props.attachment));
+const isVideo = computed(() => isVideoAttachment(props.attachment));
+const isPdf = computed(() => isPdfAttachment(props.attachment));
+const mediaFailed = ref(false);
 const displayName = computed(() => props.attachment?.name || t('attachments.fallback'));
 const openOriginalLabel = computed(() => t('attachments.openOriginalNamed', { name: displayName.value }));
 const attachmentUrl = computed(() => api.getFileUrl(props.attachment?.key || props.attachment?.url));
@@ -45,6 +48,7 @@ watch(
   () => props.attachment?.key || props.attachment?.url,
   () => {
     imageFailed.value = false;
+    mediaFailed.value = false;
   }
 );
 </script>
@@ -109,6 +113,29 @@ watch(
       </Teleport>
     </template>
 
+    <template v-else-if="isVideo || isPdf">
+      <!-- biome-ignore lint/a11y/useMediaCaption: Uploaded files do not include caption tracks. -->
+      <video
+        v-if="isVideo && !mediaFailed"
+        class="message-attachment__video"
+        :src="attachmentUrl"
+        controls
+        playsinline
+        preload="metadata"
+        :aria-label="displayName"
+        @error="mediaFailed = true"
+      ></video>
+      <!-- biome-ignore lint/a11y/useIframeTitle: Vue binds the attachment filename as the title. -->
+      <iframe
+        v-else-if="isPdf"
+        class="message-attachment__pdf"
+        :src="attachmentUrl"
+        :title="displayName"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+      ></iframe>
+      <a :href="attachmentUrl" target="_blank" rel="noreferrer" class="chat-bubble__attachment message-attachment__file">{{ displayName }}</a>
+    </template>
     <a
       v-else
       :href="attachmentUrl"

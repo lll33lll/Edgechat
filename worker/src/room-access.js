@@ -11,13 +11,11 @@ export function isRoomKind(kind) {
 }
 
 function normalizePrincipal(principal) {
-	const isAdmin = Boolean(principal?.isAdmin);
 	const userId = Number(principal?.userId);
-	if (!isAdmin && (!Number.isInteger(userId) || userId <= 0)) {
+	if (!Number.isInteger(userId) || userId <= 0) {
 		return null;
 	}
 	return {
-		isAdmin,
 		userId: Number.isInteger(userId) && userId > 0 ? userId : 0,
 	};
 }
@@ -78,9 +76,7 @@ export async function authorizeRoom(db, principal, kind, roomId) {
 		return { ok: false, reason: ROOM_ACCESS_FAILURE.INVALID_ROOM };
 	}
 
-	const membershipCondition = identity.isAdmin
-		? "1 = 1"
-		: "EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?)";
+	const membershipCondition = "EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?)";
 	const statement = db.prepare(
 		`SELECT c.id, c.name, c.description, c.avatar_key, c.kind, c.dm_key
 		 FROM channels c
@@ -90,17 +86,13 @@ export async function authorizeRoom(db, principal, kind, roomId) {
 		   AND ${membershipCondition}
 		 LIMIT 1`,
 	);
-	const bound = identity.isAdmin
-		? statement.bind(numericRoomId, kind)
-		: statement.bind(numericRoomId, kind, identity.userId);
+	const bound = statement.bind(numericRoomId, kind, identity.userId);
 	const { results } = await bound.all();
 	const room = results[0] || null;
 	if (!room) {
 		return {
 			ok: false,
-			reason: identity.isAdmin
-				? ROOM_ACCESS_FAILURE.NOT_FOUND
-				: ROOM_ACCESS_FAILURE.FORBIDDEN,
+			reason: ROOM_ACCESS_FAILURE.FORBIDDEN,
 		};
 	}
 	return { ok: true, room, identity };
@@ -116,15 +108,6 @@ export async function authorizeChannelManagement(db, principal, channelId) {
 	if (!channel || channel.kind === "dm") {
 		return { ok: false, reason: ROOM_ACCESS_FAILURE.NOT_FOUND };
 	}
-	if (identity.isAdmin) {
-		return {
-			ok: true,
-			channel,
-			membership: { role: "owner" },
-			identity,
-		};
-	}
-
 	const membership = await getChannelMembership(db, channelId, identity.userId);
 	if (membership?.role !== "owner") {
 		return { ok: false, reason: ROOM_ACCESS_FAILURE.FORBIDDEN };
@@ -134,7 +117,7 @@ export async function authorizeChannelManagement(db, principal, channelId) {
 
 export async function authorizeMessageModeration(db, principal, kind, roomId) {
 	const access = await authorizeRoom(db, principal, kind, roomId);
-	if (!access.ok || access.identity.isAdmin) {
+	if (!access.ok) {
 		return access;
 	}
 	if (access.room.kind === "dm") {

@@ -1,10 +1,11 @@
 import { cloneDemo, demoState } from './state.js';
+import { demoOwnsGroup } from './rbac.ts';
 
 export function demoInstanceBridge(path, method, body) {
-  const channels = demoState.channels.filter((c) => c.kind !== 'dm');
+  const channels = demoState.channels.filter((c) => c.kind !== 'dm' && demoOwnsGroup(c.id));
   if (!demoState.instanceBindings) demoState.instanceBindings = [];
   const bindings = demoState.instanceBindings;
-  const state = () => cloneDemo({ channels: channels.map(({ id, name, kind }) => ({ id, name, kind })), bindings,
+  const state = () => cloneDemo({ channels: channels.map(({ id, name, kind }) => ({ id, name, kind })), bindings: bindings.filter((b) => demoOwnsGroup(b.channelId)),
     instance: { id: 'demo-local', origin: 'https://edgechat.demo' } });
   const room = path.match(/^\/channels\/(\d+)\/instance-bridge$/);
   if (room) return cloneDemo({ binding: bindings.find((b) => b.channelId === Number(room[1]) && b.status !== 'revoked') || null });

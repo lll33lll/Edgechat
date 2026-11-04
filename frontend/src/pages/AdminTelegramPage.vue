@@ -5,6 +5,8 @@ import api from '../api.js';
 import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 import { t } from '../i18n.js';
+import { can } from '../authorization.ts';
+import store from '../store.js';
 
 const loading = ref(false);
 const savingConfig = ref(false);
@@ -112,7 +114,7 @@ onMounted(loadState);
             {{ state.config.configured ? t('telegram.configured') : t('telegram.notConfigured') }}
           </span>
         </div>
-        <form class="telegram-config-form" @submit.prevent="saveConfig">
+        <form v-if="store.session?.isSuperAdmin" class="telegram-config-form" @submit.prevent="saveConfig">
           <label class="field telegram-token-field">
             <span>{{ t('telegram.botToken') }}</span>
             <input v-model.trim="configForm.botToken" type="password" autocomplete="off" placeholder="123456789:AA..." />
@@ -136,7 +138,7 @@ onMounted(loadState);
             <p class="muted">{{ t('telegram.mappingCount', { count: state.mappings.length }) }}</p>
           </div>
         </div>
-        <form class="telegram-mapping-form" @submit.prevent="createMapping">
+        <form v-if="can('telegram.mappings.manage')" class="telegram-mapping-form" @submit.prevent="createMapping">
           <label class="field">
             <span>{{ t('telegram.edgechatGroup') }}</span>
             <select v-model="mappingForm.channelId" required>
@@ -175,13 +177,13 @@ onMounted(loadState);
                 </td>
                 <td>
                   <label class="telegram-switch">
-                    <input type="checkbox" :checked="mapping.enabled" @change="toggleMapping(mapping)" />
+                    <input type="checkbox" :disabled="!can('telegram.mappings.manage')" :checked="mapping.enabled" @change="toggleMapping(mapping)" />
                     <span aria-hidden="true"></span>
                     <span class="telegram-switch__label">{{ mapping.enabled ? t('common.enabled') : t('common.paused') }}</span>
                   </label>
                 </td>
                 <td>
-                  <button type="button" class="admin-icon-button" :title="t('telegram.deleteMapping')" :aria-label="t('telegram.deleteMapping')" @click="removeMapping(mapping)">
+                  <button v-if="can('telegram.mappings.manage')" type="button" class="admin-icon-button" :title="t('telegram.deleteMapping')" :aria-label="t('telegram.deleteMapping')" @click="removeMapping(mapping)">
                     <Trash2 :size="16" aria-hidden="true" />
                   </button>
                 </td>

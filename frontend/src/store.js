@@ -3,11 +3,14 @@ import {
   getStoredNativeServerOrigin,
   isCapacitorAndroid,
   restoreStoredNativeServerOrigin,
-  resolveServerAssetUrl,
   setStoredNativeServerOrigin
 } from './capacitor-platform.ts';
 import { isDemoMode, runtimeSessionToken } from './runtime.js';
 import api from './api.js';
+import { applySiteMetadata } from './site-metadata.js';
+import { normalizeSiteColorTheme } from '../../shared/site-theme.ts';
+import { applySiteColorTheme } from './site-theme.ts';
+import { hasDocumentSession, isGatewayMode } from './gateway.ts';
 import {
   addAuthInvalidListener,
   clearStoredToken,
@@ -15,7 +18,24 @@ import {
   setStoredToken
 } from './auth-storage.js';
 
-const DEFAULT_SITE_ICON_URL = '/logo.svg';
+let loginProbeController;
+
+function collectLoginNetwork(session) {
+  if (isDemoMode || isCapacitorAndroid || !session.loginProbeId) return;
+  loginProbeController?.abort();
+  const controller = new AbortController();
+  loginProbeController = controller;
+  // 探测失败不影响登录；先记一次性 ID，刷新和重新进入后台时不重复加载或探测。
+  void (async () => {
+    if (localStorage.getItem('edgechat.login-probe') === session.loginProbeId) return;
+    localStorage.setItem('edgechat.login-probe', session.loginProbeId);
+    const { probeWebRtc } = await import('./login-network.ts');
+    if (controller.signal.aborted) return;
+    const result = await probeWebRtc({ signal: controller.signal });
+    if (controller.signal.aborted || state.token !== session.token) return;
+    await api.reportLoginNetwork(session.loginProbeId, result, { signal: controller.signal });
+  })().catch(() => {});
+}
 
 const state = reactive({
   ready: false,
@@ -23,45 +43,38 @@ const state = reactive({
   session: null,
   site: {
     siteName: 'Edgechat',
-    siteIconUrl: ''
+    siteIconUrl: '',
+    colorTheme: 'default'
   }
 });
 
 function clearAuthState() {
+  loginProbeController?.abort();
   clearStoredToken();
   state.token = '';
   state.session = null;
 }
 
-function applySiteMetadata(site) {
-  const siteName = String(site?.siteName || 'Edgechat').trim() || 'Edgechat';
-  const siteIconUrl = String(site?.siteIconUrl || '').trim();
-  document.title = siteName;
-
-  let favicon = document.querySelector('link[rel="icon"]');
-  if (!favicon) {
-    favicon = document.createElement('link');
-    favicon.setAttribute('rel', 'icon');
-    document.head.appendChild(favicon);
-  }
-
-  if (siteIconUrl) {
-    favicon.setAttribute('href', resolveServerAssetUrl(siteIconUrl));
-  } else {
-    favicon.setAttribute('href', DEFAULT_SITE_ICON_URL);
-  }
-}
-
 async function loadSite() {
+  const serverOrigin = getStoredNativeServerOrigin();
   try {
     const payload = await api.getSite();
-    setSite(payload.site);
+    // 原生客户端可能已切换服务地址，旧站点的后台响应不能覆盖新配置。
+    if (serverOrigin === getStoredNativeServerOrigin()) setSite(payload.site);
   } catch {
     applySiteMetadata(state.site);
   }
 }
 
-async function initialize() {
+let initialization;
+function initialize() {
+  if (state.ready) return Promise.resolve();
+  // 入口与路由守卫共用同一次鉴权，避免提前挂载后重复恢复会话。
+  if (!initialization) initialization = initializeSession();
+  return initialization;
+}
+
+async function initializeSession() {
   if (state.ready) {
     return;
   }
@@ -72,9 +85,15 @@ async function initialize() {
     return;
   }
 
-  await loadSite();
+  if (hasDocumentSession && !isDemoMode && !isCapacitorAndroid) {
+    // 网关登录可能切换了账号，不能让之前 localStorage 中的旧 token 覆盖刚验证的 Cookie。
+    clearAuthState();
+  }
+  // 名称、图标和配色独立加载，默认外观即可展示基础界面。
+  setSite(state.site);
+  void loadSite();
 
-  if (!state.token) {
+  if (!state.token && !hasDocumentSession) {
     state.ready = true;
     return;
   }
@@ -82,6 +101,9 @@ async function initialize() {
   try {
     const payload = await api.session();
     state.session = payload.session;
+    state.token = payload.session.token;
+    setStoredToken(state.token);
+    collectLoginNetwork(payload.session);
   } catch {
     clearAuthState();
   } finally {
@@ -95,6 +117,7 @@ async function login(credentials) {
   state.session = payload.session;
   state.ready = true;
   setStoredToken(payload.token);
+  collectLoginNetwork(payload.session);
 }
 
 async function configureNativeServer(configuredOrigin) {
@@ -124,24 +147,40 @@ async function logout() {
     }
   } finally {
     clearAuthState();
+    if (!isDemoMode && !isCapacitorAndroid) window.location.replace('/');
   }
 }
 
 function setSession(session) {
   state.session = session;
 }
+let authorizationRefresh;
+function refreshAuthorization() {
+  if (!state.session) return Promise.resolve();
+  if (!authorizationRefresh) authorizationRefresh = api.authorization().then(({ authorization }) => {
+    if (state.session) state.session = { ...state.session, ...authorization };
+  }).catch((error) => {
+    if (state.session) state.session = { ...state.session, canAccessAdmin: false, isSuperAdmin: false, permissions: [] };
+    throw error;
+  }).finally(() => { authorizationRefresh = null; });
+  return authorizationRefresh;
+}
 
 function setSite(site) {
   state.site = {
     siteName: String(site?.siteName || 'Edgechat').trim() || 'Edgechat',
-    siteIconUrl: String(site?.siteIconUrl || '').trim()
+    siteIconUrl: String(site?.siteIconUrl || '').trim(),
+    colorTheme: normalizeSiteColorTheme(site?.colorTheme)
   };
+  applySiteColorTheme(state.site.colorTheme);
   applySiteMetadata(state.site);
 }
 
 if (typeof window !== 'undefined') {
+  window.addEventListener('authorization-changed', () => { void refreshAuthorization().catch(() => {}); });
   addAuthInvalidListener(() => {
     clearAuthState();
+    if (isGatewayMode) window.location.replace('/');
   });
 }
 
@@ -164,5 +203,6 @@ export default {
   logout,
   setSession,
   setSite,
-  loadSite
+  loadSite,
+  refreshAuthorization
 };

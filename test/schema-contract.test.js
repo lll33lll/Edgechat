@@ -95,6 +95,13 @@ test("full schema executes baseline migration plan into ledger and passes system
   });
   db.exec(plan.sql);
   assert.ok(plan.decisions.every(({ action }) => action === "baseline"));
+  assert.deepEqual(plan.decisions.find(({ id }) => id === "2026-04-05-private-groups"), {
+    id: "2026-04-05-private-groups", action: "baseline"
+  });
+  assert.doesNotMatch(plan.sql, /DROP TABLE channels|CREATE TABLE channels_new|ALTER TABLE channel_members/);
+  // 基线不能重建 channels；实际建号验证系统群触发器仍可用，而不只检查对象存在。
+  db.exec("INSERT INTO users (username, password_hash, password_salt, display_name) VALUES ('baseline-probe', 'hash', 'salt', 'Baseline probe');");
+  assert.equal(rows(db, "SELECT COUNT(*) AS count FROM channel_members cm JOIN users u ON u.id = cm.user_id JOIN channels c ON c.id = cm.channel_id WHERE u.username = 'baseline-probe' AND c.name = 'general'")[0].count, 1);
   assert.equal((await inspectSchema(async (sql) => rows(db, sql), manifest)).status, "ok");
   const namespace = (service) => ({
     idFromName: (name) => name,
@@ -105,14 +112,16 @@ test("full schema executes baseline migration plan into ledger and passes system
     SESSIONS: { get: async () => null }, FILES: { list: async () => ({ objects: [] }) },
     CHANNEL_ROOM: namespace('ChannelRoom'), USER_INBOX: namespace('UserInbox'), SCHEDULER: namespace('Scheduler'),
     INSTANCE_BRIDGE: namespace('InstanceBridge'),
+    VOICE_CALL: namespace('VoiceCall'),
+    TELEGRAM_NOTIFICATIONS: namespace('TelegramNotifications'),
     EDGECHAT_ENCRYPTION_KEYRING: 'presence-only'
   });
   assert.equal(result.status, 'ok');
   assert.ok(result.checks.every((check) => check.status === 'ok'));
-  db.exec('DROP INDEX idx_messages_reply_attention; DROP TRIGGER clear_pin_after_message_soft_delete; ALTER TABLE users DROP COLUMN disabled_until;');
+  db.exec('DROP INDEX idx_messages_reply_attention; DROP TRIGGER clear_pin_after_message_soft_delete; DROP TRIGGER protect_last_super_update; DROP TRIGGER protect_last_super_delete; ALTER TABLE users DROP COLUMN disabled_until;');
   const drift = await inspectSchema(async (sql) => rows(db, sql), manifest);
   assert.equal(drift.status, 'drift');
-  assert.deepEqual(drift.missingArtifacts.sort(), ['column:users.disabled_until', 'index:idx_messages_reply_attention', 'trigger:clear_pin_after_message_soft_delete']);
+  assert.deepEqual(drift.missingArtifacts.sort(), ['column:users.disabled_until', 'index:idx_messages_reply_attention', 'trigger:clear_pin_after_message_soft_delete', 'trigger:protect_last_super_delete', 'trigger:protect_last_super_update']);
   db.close();
 });
 
@@ -148,7 +157,7 @@ test("demo maintenance report uses the generated manifest and matches the produc
   assert.equal(report.status, "ok");
   assert.equal(report.version, `v${project.version}`);
   assert.equal(report.expectedMigration, D1_MIGRATIONS.at(-1).id);
-  assert.deepEqual(report.checks.map((check) => check.id), ["d1", "schema", "sessions", "files", "channelRoom", "userInbox", "scheduler", "instanceBridge", "environment"]);
+  assert.deepEqual(report.checks.map((check) => check.id), ["d1", "schema", "sessions", "files", "channelRoom", "userInbox", "scheduler", "instanceBridge", "voiceCall", "telegramNotifications", "environment"]);
   assert.equal(report.checks.find((check) => check.id === "schema").schema.status, "ok");
 });
 

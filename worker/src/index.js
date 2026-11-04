@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
-  createSession,
   deleteSession,
   hashPassword,
   isConfiguredAdminUsername,
@@ -16,17 +15,29 @@ import {
   getAvailableRegistrationInvite
 } from './data/registration-invites.js';
 import { getSiteSettings } from './data/site-settings.js';
-import { getUserByUsername, listActiveUsers } from './data/users.js';
+import { listActiveUsers } from './data/users.js';
 import { ApiError } from './errors.js';
 import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
+import { registerRbacRoutes } from './api/rbac.ts';
+import { registerStorageRoutes } from './api/storage.ts';
 import { registerMaintenanceRoutes } from './api/maintenance.ts';
+import { registerStealthRoutes } from './api/stealth.ts';
+import { createSiteEntry } from './stealth/entry.ts';
+import { loginWithPassword } from './login.ts';
+import { enforceRateLimit, verifyLoginSecurity } from './login-security.ts';
+import { registerLoginVerificationPublicRoutes, registerLoginVerificationRoutes } from './api/login-verification.ts';
+import { sessionCookie } from './session-cookie.ts';
 import { registerInstanceBridgePublicRoutes, registerInstanceBridgeRoutes } from './api/instance-bridge.ts';
 import { InstanceBridge } from './do/InstanceBridge.ts';
 import { rescueBridgeDeliveries } from './integrations/instance-bridge/delivery.ts';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerContactRoutes } from './api/contacts.ts';
+import { registerLoginNetworkRoutes } from './api/login-network.ts';
 import { registerDmRoutes } from './api/dm.js';
+import { registerCallRoutes } from './api/calls.ts';
+import { VoiceCall } from './do/VoiceCall.ts';
+import { TelegramNotifications } from './do/TelegramNotifications.ts';
 import { registerMessageRoutes } from './api/messages.js';
 import { registerUploadRoutes } from './api/upload.js';
 import { registerUserBlockRoutes } from './api/user-blocks.ts';
@@ -43,7 +54,6 @@ import { Scheduler } from './do/Scheduler.js';
 import { UserInbox } from './do/UserInbox.js';
 import { forwardInboxConnection, forwardRoomConnection } from './do-bridge.js';
 import { runScheduledGc } from './gc.js';
-import { isUserDisabled } from './user-status.js';
 import { updateCurrentDeviceSessionVersion } from './mobile-session.js';
 import {
   errorCodeForStatus,
@@ -73,6 +83,13 @@ app.use('/api/*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 
+app.use('/api/*', async (c, next) => {
+  if (c.req.method !== 'OPTIONS' && !new URL(c.req.url).pathname.startsWith('/api/integrations/')) {
+    await enforceRateLimit(c.env.API_RATE_LIMITER, c.req.raw);
+  }
+  await next();
+});
+
 app.get('/api/health', (c) => c.json({ ok: true }));
 
 app.get('/api/site', async (c) => {
@@ -82,6 +99,7 @@ app.get('/api/site', async (c) => {
 
 registerTelegramPublicRoutes(app);
 registerInstanceBridgePublicRoutes(app);
+registerLoginVerificationPublicRoutes(app);
 
 app.get('/api/register-links/:token', async (c) => {
   const token = String(c.req.param('token') || '').trim();
@@ -108,6 +126,7 @@ app.get('/api/register-links/:token', async (c) => {
 app.post('/api/register-links/:token/register', async (c) => {
   const token = String(c.req.param('token') || '').trim();
   const payload = await parseJsonRequest(c.req.raw);
+  if (Object.keys(payload).some((key) => !['username', 'displayName', 'password'].includes(key))) return errorResponse('请求包含不允许修改的字段');
   const username = String(payload.username || '').trim();
   const password = String(payload.password || '');
   const displayName = String(payload.displayName || username).trim();
@@ -149,17 +168,13 @@ app.post('/api/auth/login', async (c) => {
     return errorResponse('请输入用户名和密码');
   }
 
-  const user = await getUserByUsername(c.env.DB, username);
-  if (!user || isUserDisabled(user)) {
+  await verifyLoginSecurity(c.env, c.req.raw, payload.turnstileToken);
+  const session = await loginWithPassword(c.env, username, password, c.req.raw);
+  if (!session) {
     return errorResponse('账号或密码错误', 401);
   }
 
-  const valid = await verifyPassword(password, user.password_hash, user.password_salt);
-  if (!valid) {
-    return errorResponse('账号或密码错误', 401);
-  }
-
-  const session = await createSession(c.env, user);
+  c.header('Set-Cookie', sessionCookie(c.req.raw, session.token));
   return c.json({
     token: session.token,
     session
@@ -169,38 +184,18 @@ app.post('/api/auth/login', async (c) => {
 registerV1Routes(app);
 
 app.use('/api/*', authMiddleware);
+registerLoginNetworkRoutes(app);
 
 app.get('/api/auth/session', async (c) => {
   const session = c.get('session');
-  const user = await c.env.DB.prepare(
-    `SELECT display_name, avatar_key, bio, is_disabled, disabled_until
-     FROM users
-     WHERE id = ?
-       AND deleted_at IS NULL
-     LIMIT 1`
-  )
-    .bind(session.userId)
-    .all();
-
-  if (!user.results[0] || isUserDisabled(user.results[0])) {
-    await deleteSession(c.env, session.token);
-    return errorResponse('账号已不可用', 401);
-  }
-
-  const freshSession = {
-    ...session,
-    displayName: user.results[0].display_name,
-    bio: user.results[0].bio,
-    avatarUrl: user.results[0].avatar_key ? `/files/${encodeURIComponent(user.results[0].avatar_key)}` : ''
-  };
-  await putSession(c.env, freshSession);
-
-  return c.json({ session: freshSession });
+  c.header('Set-Cookie', sessionCookie(c.req.raw, session.token));
+  return c.json({ session });
 });
 
 app.post('/api/auth/logout', async (c) => {
   const session = c.get('session');
   await deleteSession(c.env, session.token);
+  c.header('Set-Cookie', sessionCookie(c.req.raw, ''));
   return c.json({ ok: true });
 });
 
@@ -267,7 +262,7 @@ app.get('/api/users', async (c) => {
 
 app.get('/api/bootstrap', async (c) => {
   const session = c.get('session');
-  await ensureGeneralChannelMembership(c.env.DB, session.userId);
+  // schema/迁移负责历史回填，建号路径与触发器负责新增成员；初始化不再重复写入。
   const [users, channels, dms] = await Promise.all([
     listActiveUsers(c.env.DB, session.userId),
     listVisibleChannels(c.env.DB, session.userId),
@@ -282,12 +277,17 @@ app.use('/api/admin/*', adminMiddleware);
 registerMessageRoutes(app);
 registerContactRoutes(app);
 registerDmRoutes(app);
+registerCallRoutes(app);
 registerUserBlockRoutes(app);
 registerUserProfileRoutes(app);
 registerUploadRoutes(app);
 registerChannelRoutes(app);
 registerAdminRoutes(app);
+registerRbacRoutes(app);
+registerStorageRoutes(app);
 registerMaintenanceRoutes(app);
+registerStealthRoutes(app);
+registerLoginVerificationRoutes(app);
 registerTelegramAdminRoutes(app);
 registerTelegramNotificationRoutes(app);
 registerInstanceBridgeRoutes(app);
@@ -329,6 +329,7 @@ app.onError((error, c) => {
   console.error(error);
   const isV1 = new URL(c.req.url).pathname.startsWith('/api/v1/');
   if (error instanceof ApiError) {
+    if (error.status === 429) c.header('Retry-After', '60');
     if (isV1) {
       return v1ErrorResponse(error.code, error.message, error.status);
     }
@@ -341,7 +342,7 @@ app.onError((error, c) => {
 });
 
 export default {
-  fetch: app.fetch,
+  fetch: createSiteEntry(app.fetch),
   async scheduled(controller, env, ctx) {
     const tasks = [rescueBridgeDeliveries(env), rescueTelegramNotifications(env)];
     // 免费账户的 cron 数量是账户级上限；复用 15 分钟触发器，在 UTC 19:00 的轮次追加每日 GC。
@@ -353,4 +354,4 @@ export function shouldRunDailyGc(scheduledTime) {
   const time = new Date(scheduledTime);
   return time.getUTCHours() === 19 && time.getUTCMinutes() === 0;
 }
-export { ChannelRoom, Scheduler, UserInbox, InstanceBridge };
+export { ChannelRoom, Scheduler, UserInbox, InstanceBridge, VoiceCall, TelegramNotifications };

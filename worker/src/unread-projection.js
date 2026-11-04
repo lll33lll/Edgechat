@@ -18,7 +18,7 @@ export function createUnreadProjection({
 	logFailure = logProjectionFailure,
 	enqueueNotification = enqueueTelegramNotification,
 } = {}) {
-	async function notifyRecipient(env, room, message, userId, replyToSenderId) {
+	async function notifyRecipient(env, room, message, userId, replyToSenderId, senderId) {
 		try {
 			const mentionsMe = (message.mentionUserIds || []).includes(Number(userId));
 			const replyToMe =
@@ -61,6 +61,7 @@ export function createUnreadProjection({
 			try {
 				await enqueueNotification(env, {
 					userId,
+					senderId,
 					room,
 					message,
 					kind: room.kind === "dm" ? "dm" : "mention",
@@ -85,7 +86,7 @@ export function createUnreadProjection({
 			);
 			await Promise.all(
 				recipientIds.map((userId) =>
-					notifyRecipient(env, room, message, userId, replyToSenderId),
+					notifyRecipient(env, room, message, userId, replyToSenderId, senderId),
 				),
 			);
 		} catch (error) {

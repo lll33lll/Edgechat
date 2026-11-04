@@ -172,6 +172,11 @@ test("私信拉黑先确认，并同步当前会话与侧栏状态", async () =>
 	assert.equal(await userBlock.toggleUserBlock(), true);
 	assert.equal(userBlock.isBlockedByMe.value, false);
 	assert.deepEqual(calls.map(([type]) => type), ["confirm", "confirm", "block", "unblock"]);
+	userBlock.applyBlockState(2, true);
+	assert.equal(userBlock.isBlockedByMe.value, true);
+	userBlock.applyBlockState(2, false);
+	assert.equal(userBlock.isBlockedByMe.value, false);
+	assert.equal(dms.value[0].isBlockedByMe, false, "通讯录解除同步隐藏的当前私聊与侧栏");
 });
 
 test("刷新后打开私信保留服务端返回的拉黑状态", () => {

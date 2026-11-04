@@ -1,4 +1,8 @@
 export default {
+  'maintenance.telegramNotifications': 'TelegramNotifications DO',
+  'maintenance.method.telegramNotifications': 'TELEGRAM_NOTIFICATIONS binding + 内部 health 请求',
+  "maintenance.voiceCall": "VoiceCall DO",
+  "maintenance.method.voiceCall": "VOICE_CALL binding + 内部 health 请求",
   "admin.nav.maintenance": "安装与维护",
   "admin.nav.maintenanceDescription": "检查实例依赖、数据库结构与部署版本",
   "maintenance.description": "确认这次部署是否就绪。只读检查，不修改数据或触发清理。",

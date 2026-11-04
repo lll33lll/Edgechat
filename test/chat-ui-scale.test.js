@@ -94,10 +94,20 @@ test("窄屏演示导航避开输入区和聊天覆盖层", () => {
 	for (const selector of [
 		"body:has(.room-management-layer) .demo-navigator",
 		"body:has(.composer-rich-editor) .demo-navigator",
+		"body:has(.composer-attachment) .demo-navigator",
 		"body:has(.composer-reply) .demo-navigator",
 	]) {
 		assert.ok(demoNavigator.includes(selector), `演示导航缺少避让规则：${selector}`);
 	}
+});
+
+test("演示 Star 入口保留安全外链、无障碍标签与窄屏触控区域", () => {
+	assert.match(demoNavigator, /class="demo-navigator__star"[^>]*href="https:\/\/github\.com\/aozorae\/Edgechat"[^>]*target="_blank"[^>]*rel="noopener noreferrer"[^>]*:title="t\('demo\.star'\)"[^>]*:aria-label="t\('demo\.star'\)"/s);
+	assert.match(demoNavigator, /<Star[^>]*aria-hidden="true"/);
+	assert.match(getStyleRule(demoNavigator, ".demo-navigator__star:focus-visible"), /outline:\s*2px solid/);
+	const mobileStyles = demoNavigator.slice(demoNavigator.indexOf("@media (max-width: 640px)"));
+	assert.match(getStyleRule(mobileStyles, ".demo-navigator__star"), /width:\s*44px;\s*height:\s*44px;/);
+	assert.match(getStyleRule(mobileStyles, ".demo-navigator__star span"), /display:\s*none;/);
 });
 
 test("聊天侧栏跟随全屏根节点且不污染后台根节点", () => {
@@ -110,6 +120,16 @@ test("聊天侧栏跟随全屏根节点且不污染后台根节点", () => {
 	}
 
 	assert.doesNotMatch(chatPage, /(?:html|body|#app|\.admin-page)\s*{[^}]*zoom:/s);
+});
+
+test("桌面侧栏提供明确的个人设置入口并保留移动端入口", () => {
+	const sidebar = chatPage.slice(chatPage.indexOf('<aside class="right-sidebar">'), chatPage.indexOf('<aside class="left-sidebar">'));
+	assert.match(sidebar, /<button[^>]*class="[^"]*right-sidebar-action--settings[^>]*:data-tooltip="t\('nav\.personalSettings'\)"[^>]*:aria-label="t\('nav\.personalSettings'\)"[^>]*@click="openSettings"\s*>\s*<Settings :size="20" aria-hidden="true" \/>\s*<span class="right-sidebar-action__label">\{\{ t\('nav\.personalSettings'\) \}\}<\/span>/s);
+	assert.match(chatPage, /function openSettings\(\) \{ router\.push\('\/settings'\); \}/);
+	assert.match(getStyleRule(chatPage, ".right-sidebar-action--settings .right-sidebar-action__label"), /white-space:\s*normal;/);
+	assert.match(sidebar, /class="right-sidebar-user tooltip"/);
+	assert.match(mobileDrawer, /@click="emit\('settings'\)"/);
+	assert.match(chatPage, /@settings="navigateFromMobileDrawer\(openSettings\)"/);
 });
 
 	test("桌面端管理后台入口在图标下方显示文字", () => {

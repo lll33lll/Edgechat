@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="Edgechat.png" alt="EdgeChat" width="640" />
+  <img src="Edgechat.jpg" alt="EdgeChat" width="640" />
+
+  <p>
+    <a href="https://trendshift.io/repositories/140939?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-140939" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/140939/daily?language=JavaScript" alt="aozorae%2FEdgechat | Trendshift" width="250" height="55"/></a>
+  </p>
 
   <h3>自分のチャットスペースを、サーバーの保守から始める必要はありません。</h3>
   <p>Cloudflare を基盤としたオープンソースのセルフホスト型チームチャットシステム</p>
@@ -30,6 +34,12 @@
 常時稼働するサーバーを別途保守する必要はありません。アプリケーションとデータリソースは自分の Cloudflare アカウントにデプロイされ、GitHub Actions によって自動的にデプロイ・更新されます。メンバーがすでに Telegram を使っている場合は、両方のグループを接続し、それぞれ慣れたチャット入口を使い続けることもできます。
 
 [インターフェースプレビュー](#インターフェースプレビュー) · [オンラインデモ](#オンラインデモ) · [Telegram ブリッジ](#telegram-双方向ブリッジ) · [機能](#機能) · [プライバシーと暗号化](#プライバシーと暗号化) · [デプロイ](#デプロイ) · [ローカル開発](#ローカル開発)
+
+## ダイレクトメッセージの音声通話
+
+`2.11.0` から Web の DM で一対一音声通話を利用できます。既定は P2P、接続失敗時は TURN に切り替わり、電話横の小さな選択欄で手動切替も可能です。応答、拒否、ミュート、終了、通話時間を表示します。グループ、ビデオ、オフライン着信は対象外で、デモは実際の通話を行いません。
+
+TURN には Worker / Repository Secrets の `EDGECHAT_TURN_KEY_ID` と `EDGECHAT_TURN_API_TOKEN` が必要です。未設定では P2P のみ利用できます。Cloudflare の SFU と TURN は月間最初の 1,000 GB の無料枠を共有し、超過分は $0.05/GB です。[設定とプロトコル](docs/api/voice-calls.md) を参照してください。
 
 ## インターフェースプレビュー
 
@@ -123,7 +133,7 @@ EdgeChat は**新たに書き込まれるメッセージ本文と新たにアッ
 > **これはサーバーサイド暗号化であり、エンドツーエンド暗号化ではありません。**
 > Worker はセッション権限を検証した後に内容を復号します。Cloudflare の実行環境と鍵を管理するデプロイ担当者は、引き続き信頼する必要があります。管理画面にメッセージ閲覧入口がないことは、デプロイ担当者が技術的に内容へアクセスできないことを意味しません。
 >
-> Telegram ブリッジを有効にすると、転送されたメッセージも対応する Telegram 会話に入ります。
+> グループブリッジは引き続き全文を Telegram に同期します。個人通知は本文の先頭 8 Unicode 文字とログイン情報を含まない会話リンクのみを送り、添付ファイル名は表示しません。短いプレビューも平文であり、短文は全文が表示される場合があります。過去に送信した全文は自動撤回されません。EdgeChat 内の暗号化保存と Bot の `/chats` による DM 送信は維持されます。連携解除で通知と Bot からの送信を停止できます。
 
 <details>
 <summary><strong>鍵の管理とローテーションについて</strong></summary>
@@ -142,7 +152,7 @@ GitHub Actions はサーバーサイド暗号化の Worker Secrets を管理し�
 
 初回デプロイではこの値がそのまま採用されます。
 
-既存 Worker で自動的に増分ローテーションするには、`Deploy Worker` を手動実行し、`rotate_encryption_key` にチェックを入れます。ワークフローはバージョン付きの鍵 Secret を 1 つだけ追加し、active key ID を新しいバージョンへ切り替えます。すべての旧 Secret と旧 JSON 鍵リングは変更されません。新しいメッセージには新しい鍵を使用し、旧暗号文は各エンベロープの key ID に対応する鍵で復号します。
+既存 Worker で自動的に増分ローテーションするには、`00 Deploy Worker` を手動実行し、`rotate_encryption_key` にチェックを入れます。ワークフローはバージョン付きの鍵 Secret を 1 つだけ追加し、active key ID を新しいバージョンへ切り替えます。すべての旧 Secret と旧 JSON 鍵リングは変更されません。新しいメッセージには新しい鍵を使用し、旧暗号文は各エンベロープの key ID に対応する鍵で復号します。
 
 `apply_encryption_keyring` は手動で上書きするための予備の入口です。使用時は Repository Secret に完全な JSON 鍵リングを指定し、`keys` に履歴の暗号文から引き続き参照されるすべての旧 key ID を残したうえで、新しい鍵を追加し `activeKeyId` を更新する必要があります。
 
@@ -166,11 +176,21 @@ GitHub Actions はサーバーサイド暗号化の Worker Secrets を管理し�
 
 ## デプロイ
 
+**初回ログイン：管理者の既定パスワードと公開登録はありません。schema SQL はアカウントを作成しません。** Actions では `EDGECHAT_ADMIN_USERNAME` / `EDGECHAT_ADMIN_PASSWORD` を Repository Secrets に設定し、手動デプロイでは管理者初期化 SQL を生成して実行してください。[初回管理者設定](docs/admin-bootstrap.md#english)にコマンドと設定漏れの対応を記載しています。ログイン後、管理者がユーザーや登録招待を作成します。
+
 ### GitHub Actions による自動デプロイ
 
-デプロイとその後の更新には、リポジトリに組み込まれた GitHub Actions ワークフローの利用を推奨します。
+管理者パスワードを忘れた場合は、リポジトリの `EDGECHAT_ADMIN_PASSWORD` Secret を更新して `00 Deploy Worker` を再実行してください。毎回のデプロイでは Secret の値が優先され、変更時のみ旧セッションが無効になります。同じパスワードならセッションは維持され、権限昇格や凍結解除は行いません。[設定と復旧](docs/admin-bootstrap.md#english)を参照してください。
 
-ドキュメントに従って Cloudflare の認証とリポジトリ設定を完了すると、`Deploy Worker` を手動実行できます。また、`master` または `main` ブランチにコードをプッシュしてデプロイをトリガーすることもできます。ワークフローファイルは `.github/workflows/deploy-worker.yml` です。
+メッセージの既定保持期間は **30 日間**です。期限を過ぎると毎日の定期処理で順次自動削除されます。`MESSAGE_RETENTION_DAYS` で変更でき、明示的な既存設定はアップグレード後も維持されます。削除済みメッセージは復元できません。
+
+デプロイとその後の更新には、リポジトリに組み込まれた GitHub Actions ワークフローの利用を推奨します。`Sync Upstream` は毎日 2 回確認し、コミット末尾の `EdgeChat-Update: stable` / `security` が付いた上流リリースをマージして明示的にデプロイを起動します。初回設定とトークン権限は[更新ガイド](https://echat.azora.top/en/guide/updating-fork)、`MESSAGE_RETENTION_DAYS` は[デプロイガイド](https://echat.azora.top/en/guide/actions-deploy)を参照してください。
+
+Fork 後、自分のリポジトリの **Actions** を開き、GitHub の案内に従ってワークフローを有効にしてください。一覧の上部にある **`00 Deploy Worker`** を選択し、**`Run workflow`** をクリックします。`00` は名前順で上位に表示するための接頭辞として Fork に引き継がれ、元リポジトリのピン留め設定には依存しません。サイトのデプロイに他のワークフローの実行は不要です。
+
+ドキュメントに従って Cloudflare の認証とリポジトリ設定を完了すると、`00 Deploy Worker` を手動実行できます。また、`master` または `main` ブランチにコードをプッシュしてデプロイをトリガーすることもできます。ワークフローファイルは `.github/workflows/deploy-worker.yml` です。
+
+Workers のネイティブレート制限は既定で有効です。Cloudflare Turnstile のログイン認証は既定で無効で、管理画面の「連携 → ログイン認証」で有効化できます。Secret、手動デプロイの binding と旧クライアントの互換性は[設定ガイド](docs/login-verification.md)を参照してください。
 
 **[クイックスタート](https://echat.azora.top/guide/getting-started.html) · [GitHub Actions デプロイチュートリアル](https://echat.azora.top/guide/actions-deploy.html)**
 

@@ -52,13 +52,13 @@ test("普通成员与管理员走稳定的 authorizeRoom decision surface", asyn
 	const memberAccess = await authorizeRoom(member.db, { userId: "7" }, "private", "5");
 	assert.equal(memberAccess.ok, true);
 	assert.deepEqual(member.calls[0].binds, [5, "private", 7]);
-	assert.deepEqual(memberAccess.identity, { isAdmin: false, userId: 7 });
+	assert.deepEqual(memberAccess.identity, { userId: 7 });
 
 	const admin = createQueryQueue([[{ id: 5, kind: "private" }]]);
-	const adminAccess = await authorizeRoom(admin.db, { isAdmin: true }, "private", 5);
+	const adminAccess = await authorizeRoom(admin.db, { userId: 7, isAdmin: true }, "private", 5);
 	assert.equal(adminAccess.ok, true);
-	assert.deepEqual(admin.calls[0].binds, [5, "private"]);
-	assert.deepEqual(adminAccess.identity, { isAdmin: true, userId: 0 });
+	assert.deepEqual(admin.calls[0].binds, [5, "private", 7]);
+	assert.deepEqual(adminAccess.identity, { userId: 7 });
 });
 
 test("authorizeRoom 对非法、未找到与无成员资格返回稳定失败原因", async () => {
@@ -80,9 +80,9 @@ test("authorizeRoom 对非法、未找到与无成员资格返回稳定失败原
 		reason: ROOM_ACCESS_FAILURE.FORBIDDEN,
 	});
 	const admin = createQueryQueue([[]]);
-	assert.deepEqual(await authorizeRoom(admin.db, { isAdmin: true }, "public", 5), {
+	assert.deepEqual(await authorizeRoom(admin.db, { userId: 1, isAdmin: true }, "public", 5), {
 		ok: false,
-		reason: ROOM_ACCESS_FAILURE.NOT_FOUND,
+		reason: ROOM_ACCESS_FAILURE.FORBIDDEN,
 	});
 });
 
@@ -106,22 +106,22 @@ test("频道管理只允许管理员或 owner，并拒绝 DM", async () => {
 	});
 
 	const directMessage = createQueryQueue([[{ id: 8, kind: "dm" }]]);
-	assert.deepEqual(await authorizeChannelManagement(directMessage.db, { isAdmin: true }, 8), {
+	assert.deepEqual(await authorizeChannelManagement(directMessage.db, { userId: 1, isAdmin: true }, 8), {
 		ok: false,
 		reason: ROOM_ACCESS_FAILURE.NOT_FOUND,
 	});
 });
 
-test("消息管理允许超级管理员删除任意可见消息，并只允许群主管理群消息", async () => {
+test("后台身份不授予消息管理权限，私信不可删除且群消息仍须群主", async () => {
 	const adminDm = createQueryQueue([[{ id: 8, kind: "dm" }]]);
 	const adminAccess = await authorizeMessageModeration(
 		adminDm.db,
-		{ isAdmin: true },
+		{ userId: 1, isAdmin: true },
 		"dm",
 		8,
 	);
-	assert.equal(adminAccess.ok, true);
-	assert.deepEqual(adminDm.calls.map((call) => call.binds), [[8, "dm"]]);
+	assert.equal(adminAccess.ok, false);
+	assert.deepEqual(adminDm.calls.map((call) => call.binds), [[8, "dm", 1]]);
 
 	const owner = createQueryQueue([
 		[{ id: 5, kind: "private" }],

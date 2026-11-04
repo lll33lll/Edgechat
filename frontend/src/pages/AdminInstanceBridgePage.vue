@@ -6,6 +6,7 @@ import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 import { t } from '../i18n.js';
 import { isDemoMode } from '../runtime.js';
+import { can } from '../authorization.ts';
 
 const state = ref({ channels: [], bindings: [], instance: null });
 const busy = ref(false);
@@ -94,7 +95,7 @@ onMounted(() => perform(load));
         <div><strong>{{ t('bridge.scope') }}</strong><p class="muted">{{ t('bridge.boundary') }}</p></div>
       </UiSurface>
 
-      <UiSurface class="panel">
+      <UiSurface v-if="can('instance_bridge.manage')" class="panel">
         <div class="bridge-mode">
           <UiButton :variant="mode === 'create' ? 'primary' : 'secondary'" :disabled="busy" @click="selectMode('create')">{{ t('bridge.createInvite') }}</UiButton>
           <UiButton :variant="mode === 'accept' ? 'primary' : 'secondary'" :disabled="busy" @click="selectMode('accept')">{{ t('bridge.acceptInvite') }}</UiButton>
@@ -155,7 +156,7 @@ onMounted(() => perform(load));
             <span>{{ t('bridge.delivered', { count: binding.delivered }) }}</span>
             <span>{{ t('bridge.discarded', { count: binding.discarded }) }}</span>
           </div>
-          <div class="bridge-actions">
+          <div v-if="can('instance_bridge.manage')" class="bridge-actions">
             <UiButton v-if="binding.status === 'pending' && binding.role === 'inviter'" :disabled="busy" @click="action(binding, 'confirm')">{{ t('bridge.confirm') }}</UiButton>
             <UiButton v-if="binding.status === 'active'" variant="secondary" :disabled="busy" @click="action(binding, binding.localPaused ? 'resume' : 'pause')">{{ t(binding.localPaused ? 'bridge.resume' : 'bridge.pause') }}</UiButton>
             <UiButton v-if="binding.lastError && (binding.queued || binding.controlPending)" variant="secondary" :disabled="busy" @click="action(binding, 'retry')">{{ t('bridge.retry') }}</UiButton>

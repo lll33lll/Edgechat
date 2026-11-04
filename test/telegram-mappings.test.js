@@ -18,7 +18,7 @@ function createTelegramDatabase() {
 	const database = new SQL.Database();
 	database.exec(schema);
 	database.run(
-		"INSERT INTO users (username, display_name, password_hash, password_salt, is_admin) VALUES (?, ?, ?, ?, 1)",
+		"INSERT INTO users (username, display_name, password_hash, password_salt, is_super_admin) VALUES (?, ?, ?, ?, 1)",
 		["admin", "Admin", "hash", "salt"],
 	);
 	database.run(

@@ -57,7 +57,8 @@ test("Web/v1 简介保存、清空、默认值、PATCH 隔离与 D1 重读", asy
 	const { request, database } = await harness();
 	for (const prefix of ["", "/v1"]) {
 		assert.equal((await request(`${prefix}/users/2/profile`)).payload.profile.bio, "");
-		let result = await request(`${prefix}/me/profile`, { body: { bio: "  中文\r\n😀  ", userId: 2 } });
+		assert.equal((await request(`${prefix}/me/profile`, { body: { bio: 'must not update', userId: 2 } })).status, 400);
+    let result = await request(`${prefix}/me/profile`, { body: { bio: "  中文\r\n😀  " } });
 		assert.equal(result.status, 200);
 		assert.equal(result.payload.session.bio, "中文\n😀");
 		assert.equal(result.payload.session.displayName, "alice");
@@ -134,6 +135,7 @@ test("资料写入内部异常在 Web/v1 均隐藏堆栈和 SQL 细节", async (
 	env.DB.prepare = (sql) => {
 		const statement = prepare(sql);
 		if (sql.startsWith("UPDATE users SET")) {
+			statement.bind = () => statement;
 			statement.run = async () => { throw new Error("internal_sql_detail_do_not_expose"); };
 		}
 		return statement;

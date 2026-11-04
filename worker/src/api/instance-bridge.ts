@@ -1,6 +1,6 @@
 import { ApiError } from "../errors.js";
 import { authorizeRoom, getChannelById } from "../room-access.js";
-import { createInvite, acceptInvite, changeBinding, expireInvites } from "../integrations/instance-bridge/lifecycle.ts";
+import { createInvite, acceptInvite, changeBinding } from "../integrations/instance-bridge/lifecycle.ts";
 import { adminState, first, publicBinding, requireAdmin } from "../integrations/instance-bridge/store.ts";
 import { receiveBridgeRequest } from "../integrations/instance-bridge/receiver.ts";
 import { BRIDGE_PATH, bridgeError, readLimitedText } from "../integrations/instance-bridge/protocol.ts";
@@ -39,14 +39,13 @@ export function registerInstanceBridgeRoutes(app: Hono<AppEnv>) {
   });
   app.use("/api/admin/instance-bridge/*", async (c: Context<AppEnv>, next: () => Promise<void>) => {
     c.header("Cache-Control", "private, no-store");
-    await requireAdmin(c.env, c.get("session"));
+    await requireAdmin(c.env, c.get("session"), c.req.method === 'GET' ? 'instance_bridge.read' : 'instance_bridge.manage');
     await next();
   });
   app.get("/api/admin/instance-bridge", async (c: Context<AppEnv>) => {
     c.header("Cache-Control", "private, no-store");
-    await requireAdmin(c.env, c.get("session"));
-    await expireInvites(c.env);
-    return c.json(await adminState(c.env));
+    await requireAdmin(c.env, c.get("session"), 'instance_bridge.read');
+    return c.json(await adminState(c.env, c.get('session')));
   });
   app.post("/api/admin/instance-bridge/invitations", async (c: Context<AppEnv>) => {
     const data = await payload(c);
@@ -55,14 +54,14 @@ export function registerInstanceBridgeRoutes(app: Hono<AppEnv>) {
   app.post("/api/admin/instance-bridge/accept", async (c: Context<AppEnv>) => {
     const data = await payload(c);
     const id = await acceptInvite(c.env, c.get("session"), Number(data.channelId), String(data.invitation || ""), new URL(c.req.url).origin);
-    c.executionCtx.waitUntil(wakeBinding(c.env, id));
+    c.executionCtx.waitUntil(wakeBinding(c.get('unrestrictedEnvironment'), id));
     return c.json({ id });
   });
   app.post("/api/admin/instance-bridge/:id/actions", async (c: Context<AppEnv>) => {
     const data = await payload(c);
     const id = c.req.param("id");
     await changeBinding(c.env, c.get("session"), id, data.action);
-    c.executionCtx.waitUntil(wakeBinding(c.env, id));
-    return c.json(await adminState(c.env));
+    c.executionCtx.waitUntil(wakeBinding(c.get('unrestrictedEnvironment'), id));
+    return c.json(await adminState(c.env, c.get('session')));
   });
 }

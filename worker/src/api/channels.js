@@ -4,7 +4,6 @@ import {
   listVisibleChannels
 } from '../data/channels.js';
 import {
-  ensureGeneralChannelMembership,
   isGeneralChannel,
   isReservedGeneralChannelName
 } from '../data/general-channel.js';
@@ -56,7 +55,6 @@ async function ensureValidInvitees(db, userIds) {
 export function registerChannelRoutes(app) {
   app.get('/api/channels', async (c) => {
     const session = c.get('session');
-    await ensureGeneralChannelMembership(c.env.DB, session.userId);
     const channels = await listVisibleChannels(c.env.DB, session.userId);
     return c.json({
       channels,
@@ -185,7 +183,7 @@ export function registerChannelRoutes(app) {
         kind: channel.kind,
         isGeneral: isGeneralChannel(channel),
         myRole: membership?.role || '',
-        canManage: session.isAdmin || membership?.role === 'owner'
+        canManage: membership?.role === 'owner'
       },
       members
     });
@@ -352,7 +350,9 @@ export function registerChannelRoutes(app) {
   });
 
   app.get('/api/admin/channels', async (c) => {
-    const channels = await listAdminChannels(c.env.DB);
+    const { results: channels } = await c.env.DB.prepare(`SELECT c.id, c.name, c.kind, c.created_at AS createdAt,
+      (SELECT COUNT(*) FROM channel_members WHERE channel_id = c.id) AS memberCount
+      FROM channels c WHERE c.kind IN ('public', 'private') AND c.deleted_at IS NULL ORDER BY c.id DESC LIMIT 100`).all();
     return c.json({ channels });
   });
 

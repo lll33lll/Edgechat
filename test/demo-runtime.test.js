@@ -5,7 +5,21 @@ import {
   connectDemoInboxSocket,
   connectDemoRoomSocket
 } from '../frontend/src/demo/realtime.js';
-import { resetDemoState } from '../frontend/src/demo/state.js';
+import { createDemoFixtures } from '../frontend/src/demo/fixtures.js';
+import { demoState, resetDemoState } from '../frontend/src/demo/state.js';
+
+test('demo sample conversations follow the visitor language', () => {
+  const english = createDemoFixtures('en-US');
+  const traditional = createDemoFixtures('zh-TW');
+  const simplified = createDemoFixtures('zh-CN');
+
+  assert.equal(english.session.displayName, 'Demo Admin');
+  assert.equal(english.channels[2].name, 'Telegram Bridge');
+  assert.doesNotMatch(JSON.stringify(english.messages), /[\u4e00-\u9fff]/);
+  assert.equal(traditional.channels[1].name, '產品協作');
+  assert.equal(simplified.channels[1].name, '产品协作');
+  assert.equal(simplified.messages['private:2'][1].mentions[0].displayName, '演示管理员');
+});
 
 test.beforeEach(() => {
   resetDemoState();
@@ -18,7 +32,7 @@ test('demo backend exposes chat, contacts, admin, storage and Telegram fixture d
 		requestDemo('/bootstrap'),
 		requestDemo('/contacts'),
     requestDemo('/admin/overview'),
-    requestDemo('/admin/storage/scan'),
+    requestDemo('/admin/storage/scan', { method: 'POST', body: '{}' }),
     requestDemo('/admin/telegram')
   ]);
 
@@ -33,7 +47,8 @@ test('demo backend exposes chat, contacts, admin, storage and Telegram fixture d
 	const general = await requestDemo('/channels/1/members');
 	assert.equal(general.members.find((member) => member.id === 1).isAdmin, true);
 	assert.equal(general.members.find((member) => member.id === 5).isDisabled, true);
-  assert.equal(overview.channels.length, 4);
+  assert.equal(overview.stats.publicChannels + overview.stats.privateChannels, 4);
+  assert.equal('channels' in overview, false);
   assert.equal(storage.scannedObjects, 4);
   assert.equal(storage.items.some((item) => item.ownerType === 'telegram'), true);
   assert.equal(telegram.config.configured, true);
@@ -173,11 +188,15 @@ test('demo room socket echoes sent messages through the real-time contract', asy
 test('demo direct messages honor blocking and resume after unblocking', async () => {
 	await requestDemo('/users/2/block', { method: 'PUT' });
 	assert.equal((await requestDemo('/bootstrap')).dms[0].isBlockedByMe, true);
+	const blocked = (await requestDemo('/users/blocked')).users;
+	assert.deepEqual(blocked.map((user) => user.id), [2]);
+	assert.deepEqual(Object.keys(blocked[0]).sort(), ['avatarUrl', 'displayName', 'id', 'username']);
 
 	await requestDemo('/auth/login', {
 		method: 'POST',
 		body: { username: 'alice', password: 'demo' }
 	});
+	assert.deepEqual((await requestDemo('/users/blocked')).users, [], '反向拉黑不属于本人的列表');
 	const frames = [];
 	let socket;
 	await new Promise((resolve) => {
@@ -205,6 +224,8 @@ test('demo direct messages honor blocking and resume after unblocking', async ()
 		body: { username: 'admin', password: 'demo' }
 	});
 	await requestDemo('/users/2/block', { method: 'DELETE' });
+	assert.deepEqual((await requestDemo('/users/blocked')).users, []);
+	assert.equal((await requestDemo('/bootstrap')).dms[0].isBlockedByMe, false);
 	await requestDemo('/auth/login', {
 		method: 'POST',
 		body: { username: 'alice', password: 'demo' }
@@ -213,6 +234,28 @@ test('demo direct messages honor blocking and resume after unblocking', async ()
 	assert.equal(frames.at(-1).type, 'message');
 	assert.equal(frames.at(-1).message.content, 'restored message');
 	socket.close();
+});
+
+test('demo retries confirm one canonical message without rebroadcasting', async () => {
+  const frames = [];
+  const peerFrames = [];
+  const connect = target => new Promise(resolve => {
+    const socket = connectDemoRoomSocket({ kind: 'dm', roomId: 10,
+      onMessage: frame => target.push(JSON.parse(frame)),
+      onStatus: event => { if (event.status === 'open') resolve(socket); }
+    });
+  });
+  const socket = await connect(frames);
+  const peer = await connect(peerFrames);
+  const frame = JSON.stringify({ type: 'send', content: 'optimistic', clientMessageId: crypto.randomUUID() });
+  socket.send(frame);
+  socket.send(frame);
+  assert.equal(frames.length, 2);
+  assert.equal(peerFrames.length, 1);
+  assert.deepEqual(frames[0], frames[1]);
+  assert.equal(frames[0].message.clientMessageId, JSON.parse(frame).clientMessageId);
+  socket.close();
+  peer.close();
 });
 
 test('demo room socket persists pin, unpin and pinned-message deletion', async () => {
@@ -276,7 +319,7 @@ test('Telegram replies increment the inbox unread projection', async () => {
 	  assert.equal(inboxFrames.at(-1).mentionUnreadCount, 1);
 	  assert.equal(inboxFrames.at(-1).replyToMe, true);
 	  assert.equal(inboxFrames.at(-1).mentionsMe, false);
-  assert.equal(inboxFrames.at(-1).room.name, 'Telegram 联动');
+  assert.equal(inboxFrames.at(-1).room.name, demoState.copy.telegramName);
   roomSocket.close();
   inboxSocket.close();
 });

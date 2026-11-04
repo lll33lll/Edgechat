@@ -65,7 +65,7 @@ async function seedUser(database, username = 'alice') {
   const credentials = await hashPassword(password);
   database.run(
     `INSERT INTO users (
-       username, display_name, password_hash, password_salt, is_admin, session_version
+       username, display_name, password_hash, password_salt, is_super_admin, session_version
      ) VALUES (?, ?, ?, ?, 0, 0)`,
     [username, 'Alice', credentials.hash, credentials.salt]
   );
@@ -77,7 +77,7 @@ async function seedUser(database, username = 'alice') {
       username,
       display_name: 'Alice',
       avatar_key: null,
-      is_admin: 0,
+      is_super_admin: 0,
       session_version: 0
     }
   };
@@ -224,7 +224,14 @@ test('API v1 从 capabilities、设备登录到复用 bootstrap 保持统一契�
 
   const capabilities = await worker.fetch(new Request('https://chat.example/api/v1/capabilities'), env);
   assert.equal(capabilities.status, 200);
-  assert.equal((await capabilities.json()).apiVersion, 1);
+  const capabilityPayload = await capabilities.json();
+  assert.equal(capabilityPayload.apiVersion, 1);
+  assert.equal(capabilityPayload.limits.messageRetentionDays, 30);
+  const customCapabilities = await worker.fetch(
+    new Request('https://chat.example/api/v1/capabilities'),
+    { ...env, MESSAGE_RETENTION_DAYS: '7' }
+  );
+  assert.equal((await customCapabilities.json()).limits.messageRetentionDays, 7);
 
   const login = await worker.fetch(
     new Request('https://chat.example/api/v1/auth/login', {

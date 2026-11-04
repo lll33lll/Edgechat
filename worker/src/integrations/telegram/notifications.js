@@ -1,9 +1,6 @@
 import { getTelegramCredentials } from "../../data/telegram.js";
-import { sendTelegramText } from "./client.js";
 import { randomToken } from "../../utils.js";
 import { activeUserSql } from "../../user-status.js";
-
-const MAX_ATTEMPTS = 4;
 
 async function tokenHash(token) {
 	const bytes = new TextEncoder().encode(token);
@@ -80,80 +77,11 @@ export async function disconnectTelegramNotifications(db, userId) {
 	await db.prepare("DELETE FROM telegram_notification_outbox WHERE user_id = ? AND status != 'sent'").bind(userId).run();
 }
 
-export async function enqueueTelegramNotification(env, { userId, room, message, kind }) {
-	if (kind !== "dm" && kind !== "mention") return;
-	const result = await env.DB.prepare(
-		`INSERT OR IGNORE INTO telegram_notification_outbox
-		 (user_id, channel_id, message_id, kind, room_name)
-		 SELECT n.user_id, ?, ?, ?, ? FROM telegram_notification_users n
-		 WHERE n.user_id = ? AND n.telegram_chat_id IS NOT NULL
-		 AND CASE WHEN ? = 'dm' THEN n.dm_enabled ELSE n.mention_enabled END = 1`,
-	).bind(room.id, message.id, kind, String(room.name || "EdgeChat").slice(0, 80), userId, kind).run();
-	if (result.meta?.changes) {
-		const row = await env.DB.prepare(
-			"SELECT id FROM telegram_notification_outbox WHERE user_id = ? AND channel_id = ? AND message_id = ?",
-		).bind(userId, room.id, message.id).first();
-		if (row) await deliverTelegramNotification(env, row.id);
-	}
-}
-
-export async function deliverTelegramNotification(env, id) {
-	// A lease lets the periodic rescue recover a Worker that stopped after claiming a delivery.
-	const claimed = await env.DB.prepare(
-		`UPDATE telegram_notification_outbox SET status = 'sending', attempts = attempts + 1,
-		 next_attempt_at = datetime('now', '+5 minutes'), updated_at = CURRENT_TIMESTAMP
-		 WHERE id = ? AND attempts < ?
-		 AND ((status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP)
-		      OR (status = 'sending' AND next_attempt_at <= CURRENT_TIMESTAMP))
-		 RETURNING id, user_id, kind, room_name, attempts`,
-	).bind(id, MAX_ATTEMPTS).first();
-	if (!claimed) return;
-	try {
-		const [credentials, binding] = await Promise.all([
-			getTelegramCredentials(env),
-			env.DB.prepare(
-				`SELECT n.telegram_chat_id FROM telegram_notification_users n
-				 JOIN users u ON u.id = n.user_id
-				 WHERE n.user_id = ? AND n.telegram_chat_id IS NOT NULL
-				 AND u.deleted_at IS NULL AND ${activeUserSql("u")}
-				 AND CASE WHEN ? = 'dm' THEN n.dm_enabled ELSE n.mention_enabled END = 1`,
-			).bind(claimed.user_id, claimed.kind).first(),
-		]);
-		if (!binding || !credentials) {
-			await env.DB.prepare("UPDATE telegram_notification_outbox SET status = 'failed' WHERE id = ? AND status = 'sending'").bind(id).run();
-			return;
-		}
-		const label = claimed.kind === "dm" ? "你收到一条 EdgeChat 私信" : "你在 EdgeChat 群聊中被 @ 了";
-		await sendTelegramText(credentials.botToken, {
-			chatId: binding.telegram_chat_id,
-			text: `${label}\n${claimed.room_name}\n打开 EdgeChat 查看`,
-			parseMode: null,
-			timeoutMs: 5000,
-		});
-		await env.DB.prepare(
-			"UPDATE telegram_notification_outbox SET status = 'sent', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'sending'",
-		).bind(id).run();
-	} catch (error) {
-		console.warn("telegram notification delivery failed", String(error));
-		await env.DB.prepare(
-			`UPDATE telegram_notification_outbox SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
-			 next_attempt_at = datetime('now', '+' || (attempts * 5) || ' minutes'),
-			 updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'sending'`,
-		).bind(MAX_ATTEMPTS, id).run();
-	}
-}
-
-export async function rescueTelegramNotifications(env) {
-	const { results } = await env.DB.prepare(
-		`SELECT id FROM telegram_notification_outbox
-		 WHERE status IN ('pending', 'sending') AND attempts < ? AND next_attempt_at <= CURRENT_TIMESTAMP
-		 ORDER BY id LIMIT 50`,
-	).bind(MAX_ATTEMPTS).all();
-	await Promise.all(results.map((row) => deliverTelegramNotification(env, row.id)));
-}
+export { enqueueTelegramNotification, deliverTelegramNotification, rescueTelegramNotifications } from "./notification-queue.ts";
 
 export async function pruneTelegramNotifications(env) {
-	// Retain recent dedupe keys; old successful/failed deliveries do not need indefinite storage.
+	await env.DB.prepare("DELETE FROM telegram_dm_prompts WHERE expires_at <= CURRENT_TIMESTAMP").run();
+	// 去重只需要覆盖最近消息，终态提醒不应永久占用数据库。
 	await env.DB.prepare(
 		"DELETE FROM telegram_notification_outbox WHERE status IN ('sent', 'failed') AND updated_at < datetime('now', '-7 days')",
 	).run();

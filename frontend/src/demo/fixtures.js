@@ -1,3 +1,6 @@
+import { getLocale } from '../i18n.js';
+import { getDemoFixtureCopy } from './fixture-copy.js';
+
 const FIXTURE_TIME = '2026-08-14T10:00:00.000Z';
 
 function createDemoVoiceDataUrl() {
@@ -57,12 +60,14 @@ function internalSender(user) {
   };
 }
 
-export function createDemoFixtures() {
+// 默认读取当前界面语言；测试可显式传入语言，验证不同访客看到的预置内容。
+export function createDemoFixtures(locale = getLocale()) {
+  const copy = getDemoFixtureCopy(locale);
   const users = [
     {
       id: 1,
       username: 'admin',
-      displayName: '演示管理员',
+      displayName: copy.adminName,
       bio: '',
       avatarUrl: '',
       isAdmin: true,
@@ -130,8 +135,8 @@ export function createDemoFixtures() {
     {
       id: 7,
       username: 'long-name',
-      displayName: '负责跨团队协作与超长姓名布局验证的演示用户',
-      bio: '用于验证长名称在通讯录与资料卡中的自然降级。',
+      displayName: copy.longName,
+      bio: copy.longBio,
       avatarUrl: '',
       isAdmin: false,
       isDisabled: false,
@@ -146,12 +151,12 @@ export function createDemoFixtures() {
       id: 1,
       kind: 'public',
       name: 'General',
-      description: '全员公告与日常交流',
+      description: copy.generalDescription,
       avatarKey: '',
       avatarUrl: '',
       isGeneral: true,
       ownerId: 1,
-      ownerDisplayName: '演示管理员',
+      ownerDisplayName: copy.adminName,
       isMember: true,
       myRole: 'owner',
       canManage: true,
@@ -164,13 +169,13 @@ export function createDemoFixtures() {
     {
       id: 2,
       kind: 'private',
-      name: '产品协作',
-      description: '规划版本与验证交付',
+      name: copy.productName,
+      description: copy.productDescription,
       avatarKey: '',
       avatarUrl: '',
       isGeneral: false,
       ownerId: 1,
-      ownerDisplayName: '演示管理员',
+      ownerDisplayName: copy.adminName,
       isMember: true,
       myRole: 'owner',
       canManage: true,
@@ -184,13 +189,13 @@ export function createDemoFixtures() {
     {
       id: 3,
       kind: 'public',
-      name: 'Telegram 联动',
-      description: '展示 EdgeChat 与 Telegram 群消息双向同步',
+      name: copy.telegramName,
+      description: copy.telegramDescription,
       avatarKey: '',
       avatarUrl: '',
       isGeneral: false,
       ownerId: 1,
-      ownerDisplayName: '演示管理员',
+      ownerDisplayName: copy.adminName,
       isMember: true,
       myRole: 'owner',
       canManage: true,
@@ -204,8 +209,8 @@ export function createDemoFixtures() {
     {
       id: 4,
       kind: 'public',
-      name: '公开讨论',
-      description: '任何成员都可以发现并加入',
+      name: copy.publicName,
+      description: copy.publicDescription,
       avatarKey: '',
       avatarUrl: '',
       isGeneral: false,
@@ -238,21 +243,21 @@ export function createDemoFixtures() {
     'public:1': [
       {
         id: 101,
-        content: '欢迎来到 EdgeChat 演示站。这里展示频道、私信、附件与消息管理。',
+        content: copy.welcome,
         createdAt: '2026-08-14T09:20:00.000Z',
         sender: internalSender(users[1]),
         attachment: null
       },
       {
         id: 102,
-        content: '管理员可以从左侧进入后台，查看用户、邀请、站点设置和 Telegram 映射。',
+        content: copy.adminTour,
         createdAt: '2026-08-14T09:28:00.000Z',
         sender: internalSender(users[0]),
         attachment: null
       },
       {
         id: 103,
-        content: '这是一条图片附件消息，点击图片可以打开预览。',
+        content: copy.imageAttachment,
         createdAt: '2026-08-14T09:36:00.000Z',
         sender: internalSender(users[2]),
         attachment: {
@@ -265,7 +270,7 @@ export function createDemoFixtures() {
       },
       {
         id: 104,
-        content: '所有演示操作都只保存在当前浏览器页面中。',
+        content: copy.localOnly,
         createdAt: '2026-08-14T09:58:00.000Z',
         sender: internalSender(users[3]),
         attachment: null
@@ -288,7 +293,7 @@ export function createDemoFixtures() {
       },
       {
         id: 106,
-        content: '我先暂停参与讨论，稍后再跟进。',
+        content: copy.mutedMember,
         createdAt: '2026-08-14T10:03:00.000Z',
         sender: internalSender(users[4]),
         attachment: null
@@ -297,32 +302,32 @@ export function createDemoFixtures() {
     'private:2': [
       {
         id: 111,
-        content: '新版本的附件授权读取已经验证完成。',
+        content: copy.productUpdate,
         createdAt: '2026-08-14T09:12:00.000Z',
         sender: internalSender(users[1]),
         attachment: null
       },
       {
         id: 112,
-        content: '@admin 收到，我会继续检查移动端消息列表。',
+        content: copy.productMention,
         createdAt: '2026-08-14T09:35:00.000Z',
         sender: internalSender(users[2]),
         mentionUserIds: [1],
-        mentions: [{ userId: 1, username: 'admin', displayName: '演示管理员' }],
+        mentions: [{ userId: 1, username: 'admin', displayName: copy.adminName }],
         attachment: null
       }
     ],
     'public:3': [
       {
         id: 121,
-        content: '这条消息由 EdgeChat 发送，并同步到了 Telegram 群。',
+        content: copy.telegramOutbound,
         createdAt: '2026-08-14T09:44:00.000Z',
         sender: internalSender(users[0]),
         attachment: null
       },
       {
         id: 122,
-        content: 'Telegram 群里的回复也会回到同一个 EdgeChat 频道。',
+        content: copy.telegramInbound,
         createdAt: '2026-08-14T09:50:00.000Z',
 	        sender: {
           id: 'telegram:-1002345678901:alice',
@@ -336,7 +341,7 @@ export function createDemoFixtures() {
 	        replyTo: {
 	          id: 121,
 	          deleted: false,
-	          content: '这条消息由 EdgeChat 发送，并同步到了 Telegram 群。',
+	          content: copy.telegramOutbound,
 	          sender: internalSender(users[0]),
 	          attachment: null
 	        },
@@ -346,7 +351,7 @@ export function createDemoFixtures() {
     'public:4': [
       {
         id: 131,
-        content: '这个公开群组尚未加入，点击后会在本地模拟加入。',
+        content: copy.publicPreview,
         createdAt: '2026-08-13T14:20:00.000Z',
         sender: internalSender(users[3]),
         attachment: null
@@ -355,14 +360,14 @@ export function createDemoFixtures() {
     'dm:10': [
       {
         id: 141,
-        content: '你好，这里是一对一私信会话。',
+        content: copy.dmHello,
         createdAt: '2026-08-14T09:30:00.000Z',
         sender: internalSender(users[1]),
         attachment: null
       },
       {
         id: 142,
-        content: '消息发送、附件上传和删除都可以在 demo 中体验。',
+        content: copy.dmTour,
         createdAt: '2026-08-14T09:42:00.000Z',
         sender: internalSender(users[0]),
         attachment: null
@@ -371,12 +376,12 @@ export function createDemoFixtures() {
   };
 
   return {
-    site: { siteName: 'EdgeChat Demo', siteIconUrl: '/logo.svg' },
+    site: { siteName: 'EdgeChat Demo', siteIconUrl: '/logo.svg', colorTheme: 'default' },
     session: {
       token: 'edgechat-demo-session',
       userId: 1,
       username: 'admin',
-      displayName: '演示管理员',
+      displayName: copy.adminName,
       avatarUrl: '',
       isAdmin: true,
       sessionVersion: 1
@@ -394,27 +399,27 @@ export function createDemoFixtures() {
       {
         id: 1,
         token: 'demo-invite',
-        note: '体验邀请注册流程',
+        note: copy.inviteNote,
         maxUses: 10,
         usedCount: 2,
         remainingUses: 8,
         isAvailable: true,
         deletedAt: null,
         consumerDisplayName: 'Carol',
-        creatorDisplayName: '演示管理员',
+        creatorDisplayName: copy.adminName,
         createdAt: '2026-08-12T03:00:00.000Z'
       },
       {
         id: 2,
         token: 'team-preview',
-        note: '产品体验成员',
+        note: copy.teamInviteNote,
         maxUses: 3,
         usedCount: 3,
         remainingUses: 0,
         isAvailable: false,
         deletedAt: null,
         consumerDisplayName: 'Bob',
-        creatorDisplayName: '演示管理员',
+        creatorDisplayName: copy.adminName,
         createdAt: '2026-08-08T06:00:00.000Z'
       }
     ],
@@ -428,9 +433,9 @@ export function createDemoFixtures() {
         {
           id: 1,
           channelId: 3,
-          channelName: 'Telegram 联动',
+          channelName: copy.telegramName,
           channelKind: 'public',
-          telegramChatTitle: 'EdgeChat 演示群',
+          telegramChatTitle: copy.telegramChatTitle,
           telegramChatId: '-1002345678901',
           enabled: true
         }
@@ -442,6 +447,8 @@ export function createDemoFixtures() {
     nextMessageId: 150,
     nextInviteId: 3,
     nextMappingId: 2,
-    fixtureTime: FIXTURE_TIME
+    fixtureTime: FIXTURE_TIME,
+    // realtime/api 模拟 Telegram 回流等动态文案时复用同一语言的示例文本。
+    copy
   };
 }

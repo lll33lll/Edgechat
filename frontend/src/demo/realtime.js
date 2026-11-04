@@ -66,7 +66,7 @@ function telegramSender() {
   return {
     id: 'telegram:-1002345678901:demo',
     username: '',
-    displayName: 'Telegram · 演示群成员',
+    displayName: demoState.copy.telegramMember,
     avatarUrl: '',
     kind: 'external',
     source: 'telegram'
@@ -85,13 +85,20 @@ function handleRoomFrame(socket, frame) {
 		if (socket.kind === 'dm') {
 			const status = getDemoDirectMessageBlockStatus(socket.roomId, demoState.session.userId);
 			if (status.blockedByPeer) {
-				emit(socket, { type: 'error', error: '发送被拒，你已经被拉黑' });
+					emit(socket, { type: 'error', error: '发送被拒，你已经被拉黑', clientMessageId: payload.clientMessageId });
 				return;
 			}
 			if (status.blockedBySender) {
-				emit(socket, { type: 'error', error: '请先解除拉黑再发送' });
+					emit(socket, { type: 'error', error: '请先解除拉黑再发送', clientMessageId: payload.clientMessageId });
 				return;
 			}
+		}
+		const existing = payload.clientMessageId && (demoState.messages[roomKey(socket.kind, socket.roomId)] || [])
+			.find(message => message.clientMessageId === payload.clientMessageId
+				&& Number(message.sender.id) === Number(demoState.session.userId) && message.sender.kind !== 'external');
+		if (existing) {
+			emit(socket, { type: 'message', message: cloneDemo(existing) });
+			return;
 		}
 		const message = createDemoMessage({
       kind: socket.kind,
@@ -102,6 +109,7 @@ function handleRoomFrame(socket, frame) {
 	      mentionUserIds: payload.mentionUserIds || [],
 	      replyMessageId: payload.replyMessageId || null
     });
+    if (payload.clientMessageId) message.clientMessageId = payload.clientMessageId;
     publishRoom(socket.kind, socket.roomId, { type: 'message', message: cloneDemo(message) });
 
     if (hasEnabledTelegramMapping(socket.kind, socket.roomId)) {
@@ -109,7 +117,7 @@ function handleRoomFrame(socket, frame) {
         const reply = createDemoMessage({
           kind: socket.kind,
           roomId: socket.roomId,
-	        content: 'Telegram 已收到这条消息，并把群内回复同步回 EdgeChat。',
+	        content: demoState.copy.telegramAutoReply,
 	        attachment: null,
 	        sender: telegramSender(),
 	        mentionUserIds: [],

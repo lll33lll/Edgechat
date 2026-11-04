@@ -1,0 +1,76 @@
+/* 站点预设只定义颜色：不改变布局、字体和交互，也不覆盖个人背景。
+ * 属性选择器比路由按需加载的 :root 更具体，切换页面不会恢复旧色。
+ * default 不覆盖任何变量，完整保留原主题；错误、警告、成功和在线状态不换色。
+ */
+:root[data-color-theme="cream-sakura"] {
+  /* 浅粉与雾蓝承担大面积视觉；文字和焦点独立保留对比度，避免浅底白字。 */
+  --site-brand: #875c79;
+  --site-brand-hover: #75516c;
+  --site-action-bg: linear-gradient(115deg, #f8d8e9, #dfedfc);
+  --site-action-hover: linear-gradient(115deg, #f2c9e1, #d2e5fa);
+  --site-action-pressed: linear-gradient(115deg, #ebbed8, #c5ddf6);
+  --site-action-solid: #f5d8e9;
+  --site-action-border: #e5cfe3;
+  --site-on-action: #584761;
+  --site-button-background: var(--site-action-bg);
+  --site-brand-rgb: 163, 124, 163;
+  --site-secondary-rgb: 168, 203, 240;
+  --site-background: linear-gradient(125deg, #fff5fa 0%, #faf5ff 48%, #edf7ff 100%);
+  --site-link: #826184;
+  --site-selected: #f6eaf5;
+  --site-avatar: linear-gradient(135deg, #f9e0ee, #e0efff);
+  --bg: #fffafd;
+  --text: #3f394b;
+  --text-soft: #71667a;
+  --warm: var(--site-brand);
+  --warm-soft: #f9e6f1;
+  --cool: var(--site-brand);
+  --cool-soft: #eaf4ff;
+
+  --auth-canvas: #fffafd;
+  --auth-tide: linear-gradient(145deg, #fff7fc 0%, #fce8f3 38%, #e7f2ff 100%);
+  --auth-ink: #5f506e;
+  --auth-brand: #875c79;
+  --auth-muted: #71667a;
+  --auth-wave-sky: #fffafd;
+  --auth-wave-horizon: #f5effb;
+  --auth-wave-depth-rgb: 168, 203, 240;
+  --auth-wave-0: #c6def7;
+  --auth-wave-1: #d5def8;
+  --auth-wave-2: #e4dcf5;
+  --auth-wave-3: #f1d6eb;
+  --auth-wave-4: #f8d8e8;
+  --auth-wave-5: #fbe1ed;
+  --auth-wave-6: #fce8f1;
+  --auth-wave-7: #f7eef9;
+  --auth-wave-8: #eff5ff;
+  --auth-wave-9: #f6faff;
+  --auth-wave-10: #fffafd;
+
+  --chat-canvas: #fcf8fd;
+  --chat-rail: #f0f6fd;
+  --chat-hover: #fcf3fa;
+  --chat-selected: #f5e9f5;
+  --chat-pressed: #ecddec;
+  --chat-outgoing: #fae9f4;
+  --chat-ink: #3f394b;
+  --chat-muted: #71667a;
+  --chat-subtle: #766a80;
+  --chat-line: #eae4ef;
+  --chat-accent: var(--site-brand);
+  --chat-accent-hover: var(--site-brand-hover);
+  --chat-accent-pressed: #66435d;
+  --chat-disabled: #eee6f0;
+  --chat-scrollbar: rgba(163, 124, 163, 0.3);
+
+  --admin-workspace: var(--site-background);
+  --admin-subtle: #fcf9fd;
+  --admin-ink: #5f506e;
+  --admin-ink-hover: #715c7f;
+  --admin-brand: var(--site-brand);
+  --admin-selected: var(--site-selected);
+  --admin-green-bg: #fbf0f8;
+  --admin-green: var(--site-brand);
+  --admin-green-hover: var(--site-brand-hover);
+  --admin-focus: var(--site-brand);
+}

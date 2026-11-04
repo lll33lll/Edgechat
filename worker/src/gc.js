@@ -1,7 +1,7 @@
 import { hardDeleteChannels } from "./data/channel-deletion.ts";
 import { classifyStoredSiteIcon } from "./site-icon.js";
 
-const DEFAULT_MESSAGE_RETENTION_DAYS = 7;
+const DEFAULT_MESSAGE_RETENTION_DAYS = 30;
 const DEFAULT_SOFT_DELETE_RETENTION_DAYS = 60;
 const DEFAULT_BATCH_SIZE = 90;
 const DEFAULT_MAX_BATCHES_PER_RUN = 20;
@@ -41,9 +41,10 @@ export const ORPHAN_UPLOAD_QUERY = `SELECT object_key, created_at
 	LIMIT ?`;
 
 function toPositiveInteger(value, fallback) {
-	const parsed = Number(value);
+	// 先取整再验证，避免 0.5 天变成 0 天而误清全部历史消息。
+	const parsed = Math.floor(Number(value));
 	if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-	return Math.floor(parsed);
+	return parsed;
 }
 
 function getGcConfig(env) {

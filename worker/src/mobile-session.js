@@ -119,7 +119,7 @@ export async function refreshMobileDeviceSession(env, rawRefreshToken, rawInstal
     `SELECT
        ds.id AS device_session_id, ds.user_id, ds.installation_id,
        ds.refresh_token_hash, ds.session_version AS device_session_version,
-       u.username, u.display_name, u.avatar_key, u.is_admin,
+       u.username, u.display_name, u.avatar_key, u.is_super_admin,
        u.session_version, u.is_disabled, u.disabled_until, u.deleted_at
      FROM device_sessions ds
      JOIN users u ON u.id = ds.user_id
@@ -165,7 +165,7 @@ export async function refreshMobileDeviceSession(env, rawRefreshToken, rawInstal
     username: row.username,
     display_name: row.display_name,
     avatar_key: row.avatar_key,
-    is_admin: row.is_admin,
+    is_super_admin: row.is_super_admin,
     session_version: row.session_version
   };
   const accessSession = await createAccessSession(

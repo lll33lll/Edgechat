@@ -10,6 +10,7 @@ export function useUnreadInbox({
 	openInboxConnection = connectInboxSocket,
 	notifyInApp = () => {},
 	notifySystem = () => {},
+		onCallEvent = () => {},
 	isPageActive = () =>
 		globalThis.document?.visibilityState === "visible" &&
 		globalThis.document.hasFocus(),
@@ -27,6 +28,14 @@ export function useUnreadInbox({
 			return openInboxConnection(handlers);
 		},
 		onMessage(payload) {
+          if (payload.type === 'authorization_changed') {
+            globalThis.window?.dispatchEvent(new Event('authorization-changed'));
+            return;
+          }
+				if (payload.type?.startsWith('call_')) {
+					onCallEvent(payload);
+					return;
+				}
 			if (payload.type !== "room_message" || !payload.room) {
 				return;
 			}

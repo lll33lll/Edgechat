@@ -209,6 +209,48 @@ export const D1_MIGRATIONS = [
     file: "worker/migrations/2026-09-26-telegram-notifications.sql",
     artifacts: ["table:telegram_notification_users", "table:telegram_notification_outbox", "index:idx_telegram_notification_due"],
   },
+  {
+    id: "2026-10-05-user-login-info",
+    file: "worker/migrations/2026-10-05-user-login-info.sql",
+    artifacts: ["table:user_login_info"],
+  },
+  {
+    id: "2026-10-05-user-webrtc",
+    file: "worker/migrations/2026-10-05-user-webrtc.sql",
+    artifacts: ["column:user_login_info.login_probe_id", "column:user_login_info.webrtc_ips", "column:user_login_info.webrtc_status", "column:user_login_info.webrtc_checked_at"],
+  },
+  {
+    id: "2026-10-05-users-login-history",
+    file: "worker/migrations/2026-10-05-users-login-history.sql",
+    artifacts: ["column:user_login_info.id", "column:user_login_info.ip", "column:user_login_info.login_at", "index:idx_user_login_info_recent", "trigger:limit_user_login_info"],
+  },
+  {
+    id: "2026-10-06-rbac",
+    file: "worker/migrations/2026-10-06-rbac.sql",
+    artifacts: ["column:users.is_super_admin", "column:users.management_protected", "column:users.authz_version",
+      "table:rbac_roles", "table:rbac_role_permissions", "table:rbac_user_roles", "table:admin_write_guard", "table:admin_audit_log",
+      "index:idx_rbac_members", "index:idx_admin_audit_time", "trigger:limit_admin_audit", "trigger:assign_new_user_rbac",
+      "trigger:protect_default_rbac_update", "trigger:protect_default_rbac_delete", "trigger:protect_default_rbac_permissions",
+      "trigger:protect_super_rbac_assignment", "trigger:protect_last_super_update", "trigger:protect_last_super_delete"],
+  },
+  {
+    id: "2026-10-11-telegram-notification-budgets",
+    file: "worker/migrations/2026-10-11-telegram-notification-budgets.sql",
+    artifacts: ["column:telegram_notification_users.next_notification_at", "column:telegram_notification_outbox.sender_id",
+      "column:telegram_notification_outbox.created_at", "table:telegram_notification_gate",
+      "index:idx_telegram_notification_sender", "index:idx_telegram_notification_recipient",
+      "index:idx_telegram_notification_created", "index:idx_telegram_notification_message"],
+  },
+  {
+    id: "2026-10-23-conversation-query-index",
+    file: "worker/migrations/2026-10-23-conversation-query-index.sql",
+    artifacts: ["index:idx_messages_channel_live_time"],
+  },
+  {
+    id: "2026-10-31-telegram-direct-messages",
+    file: "worker/migrations/2026-10-31-telegram-direct-messages.sql",
+    artifacts: ["table:telegram_dm_prompts", "trigger:clear_telegram_prompt_after_rebind"],
+  },
 ];
 
 // b3f6855 曾发布、0c13e8f 已撤回的迁移：仅识别历史 ledger，不要求新安装创建废弃表，也不删除旧数据。

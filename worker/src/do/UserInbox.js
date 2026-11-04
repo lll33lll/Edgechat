@@ -1,13 +1,32 @@
 import { isVerifiedInternalRequest, parseVerifiedUserId } from '../verified-identity.js';
 import { durableObjectHealth } from '../maintenance/do-health.ts';
+import { handleCallLease } from '../calls/lease.ts';
+import { validateSession } from '../session.js';
 
 export class UserInbox {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;
     this.connections = new Set();
 
     for (const socket of this.state.getWebSockets()) {
       this.connections.add(socket);
+    }
+  }
+
+  async broadcastCall(payload) {
+    // SDP 含网络候选地址；旧会话被撤销后不能继续从常驻 Inbox 获取通话信令。
+    for (const socket of this.connections) {
+      const meta = socket.deserializeAttachment();
+      if (!meta?.token) continue;
+      const auth = await validateSession(this.env, meta.token);
+      if (!auth?.ok || auth.session.userId !== meta.userId) {
+        socket.close(4401, 'session_invalid');
+        this.connections.delete(socket);
+        continue;
+      }
+      try { socket.send(JSON.stringify(payload)); }
+      catch { this.connections.delete(socket); }
     }
   }
 
@@ -24,6 +43,8 @@ export class UserInbox {
   async fetch(request) {
     const health = durableObjectHealth(request, 'UserInbox');
     if (health) return health;
+    const lease = await handleCallLease(request, this.state.storage);
+    if (lease) return lease;
     const url = new URL(request.url);
 
     if (url.pathname === '/connect') {
@@ -39,7 +60,7 @@ export class UserInbox {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
-      server.serializeAttachment({ userId });
+      server.serializeAttachment({ userId, token: url.searchParams.get('token') || '' });
       this.connections.add(server);
       server.send(JSON.stringify({ protocolVersion: 1, type: 'ready' }));
       return new Response(null, { status: 101, webSocket: client });
@@ -51,7 +72,8 @@ export class UserInbox {
       }
 
       const payload = await request.json();
-      this.broadcast(JSON.stringify(payload));
+      if (payload.type?.startsWith('call_')) await this.broadcastCall(payload);
+      else this.broadcast(JSON.stringify(payload));
       return Response.json({ ok: true });
     }
 

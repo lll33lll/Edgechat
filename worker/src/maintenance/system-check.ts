@@ -17,6 +17,8 @@ interface MaintenanceEnv {
   USER_INBOX?: Namespace;
   SCHEDULER?: Namespace;
   INSTANCE_BRIDGE?: Namespace;
+  VOICE_CALL?: Namespace;
+  TELEGRAM_NOTIFICATIONS?: Namespace;
   [key: string]: unknown;
 }
 type CheckStatus = 'ok' | 'error' | 'missing' | 'disabled' | 'blocked';
@@ -57,6 +59,7 @@ export function inspectEnvironment(env: MaintenanceEnv) {
     (present('EDGECHAT_ENCRYPTION_ACTIVE_KEY_ID') && Object.keys(env).some((key) => /^EDGECHAT_ENCRYPTION_KEY_\d+$/.test(key) && present(key)));
   return [
     { name: 'EDGECHAT_ENCRYPTION_KEYRING / EDGECHAT_ENCRYPTION_ACTIVE_KEY_ID + EDGECHAT_ENCRYPTION_KEY_N', required: true, present: encryptionPresent },
+    { name: 'EDGECHAT_TURN_KEY_ID + EDGECHAT_TURN_API_TOKEN', required: false, present: present('EDGECHAT_TURN_KEY_ID') && present('EDGECHAT_TURN_API_TOKEN') },
     ...['ADMIN_USERNAMES', 'MESSAGE_RETENTION_DAYS', 'SOFT_DELETE_RETENTION_DAYS', 'MAX_FILE_SIZE', 'ALLOWED_FILE_TYPES'].map((name) => ({ name, required: false, present: present(name) }))
   ];
 }
@@ -89,17 +92,19 @@ export async function runSystemCheck(env: MaintenanceEnv, { timeoutMs = 8000 } =
     }, timeoutMs);
     return [connectivity, schema];
   };
-  const [dbChecks, kv, r2, room, inbox, scheduler, bridge] = await Promise.all([
+  const [dbChecks, kv, r2, room, inbox, scheduler, bridge, call, notifications] = await Promise.all([
     database(),
     env.SESSIONS ? probe('sessions', async () => { await env.SESSIONS?.get('__edgechat_health__'); return {}; }, timeoutMs) : absent('sessions'),
     env.FILES ? probe('files', async () => { await env.FILES?.list({ limit: 1 }); return {}; }, timeoutMs) : absent('files', true),
     checkObject('channelRoom', env.CHANNEL_ROOM, 'ChannelRoom', timeoutMs),
     checkObject('userInbox', env.USER_INBOX, 'UserInbox', timeoutMs),
     checkObject('scheduler', env.SCHEDULER, 'Scheduler', timeoutMs),
-    checkObject('instanceBridge', env.INSTANCE_BRIDGE, 'InstanceBridge', timeoutMs)
+    checkObject('instanceBridge', env.INSTANCE_BRIDGE, 'InstanceBridge', timeoutMs),
+    checkObject('voiceCall', env.VOICE_CALL, 'VoiceCall', timeoutMs),
+    checkObject('telegramNotifications', env.TELEGRAM_NOTIFICATIONS, 'TelegramNotifications', timeoutMs)
   ]);
   const environment = inspectEnvironment(env);
-  const checks: Check[] = [...dbChecks, kv, r2, room, inbox, scheduler, bridge, {
+  const checks: Check[] = [...dbChecks, kv, r2, room, inbox, scheduler, bridge, call, notifications, {
     id: 'environment', status: environment.some((item) => item.required && !item.present) ? 'missing' : 'ok',
     code: 'presence_only', durationMs: 0
   }];

@@ -39,13 +39,13 @@ function createMeasuredD1(database) {
 		metrics,
 		db: {
 			prepare(sql) {
-				const inner = base.prepare(sql);
+				let inner = base.prepare(sql);
 				const wrapped = {
-					inner,
+					get inner() { return inner; },
 					sql: String(sql),
 					bind(...values) {
 						metrics.maxBindings = Math.max(metrics.maxBindings, values.length);
-						inner.bind(...values);
+						inner = inner.bind(...values);
 						return this;
 					},
 					async all() {
@@ -69,6 +69,24 @@ function createMeasuredD1(database) {
 		},
 	};
 }
+
+test("消息保留期默认三十天，支持自定义天数，非法值不会误清新消息", async () => {
+	for (const [value, deleted] of [[undefined, 1], ["30", 1], ["60", 0], ["15", 3], ["7", 4], ["1", 5], ["0", 1], ["-1", 1], ["invalid", 1], ["0.5", 1]]) {
+		const database = createDatabase();
+		try {
+			const userId = insertUser(database, "retention-owner");
+			const channelId = scalar(database, "SELECT id FROM channels WHERE name = 'general'");
+			for (const age of ["-31 day", "-29 day", "-16 day", "-14 day", "-2 day", "-1 hour"]) {
+				database.run("INSERT INTO messages (channel_id, sender_id, content, created_at) VALUES (?, ?, 'message', datetime('now', ?))", [channelId, userId, age]);
+			}
+			const summary = await runScheduledGc({ DB: createD1Adapter(database), MESSAGE_RETENTION_DAYS: value });
+			assert.equal(summary.expiredMessagesDeleted, deleted, String(value));
+			assert.equal(scalar(database, "SELECT COUNT(*) FROM messages"), 6 - deleted);
+		} finally {
+			database.close();
+		}
+	}
+});
 
 test("孤儿扫描使用匹配索引，失败对象进入退避且不阻塞后续批次", async () => {
 	const database = createDatabase();
@@ -283,11 +301,11 @@ test("消息预检查后发生完整 GC，实际提交路径返回附件不可�
 	const base = createD1Adapter(database);
 	const racingDb = {
 		prepare(sql) {
-			const statement = base.prepare(sql);
+			let statement = base.prepare(sql);
 			const isMessageInsert = String(sql).includes("INSERT INTO messages");
 			return {
 				bind(...values) {
-					statement.bind(...values);
+					statement = statement.bind(...values);
 					return this;
 				},
 				all() {
@@ -393,7 +411,7 @@ test("GC 在共享预算内轮转多个步骤，失败后保留任务并可在�
 			[`budget/${String(index).padStart(3, "0")}`, userId],
 		);
 		database.run(
-			"INSERT INTO messages (channel_id, sender_id, content, created_at) VALUES (?, ?, 'old', datetime('now', '-10 day'))",
+			"INSERT INTO messages (channel_id, sender_id, content, created_at) VALUES (?, ?, 'old', datetime('now', '-31 day'))",
 			[channelId, userId],
 		);
 		database.run(
@@ -471,13 +489,13 @@ test("硬删除用户前先持久化其 R2 清理任务", async () => {
 	const failingDb = {
 		...baseDb,
 		prepare(sql) {
-			const statement = baseDb.prepare(sql);
+			let statement = baseDb.prepare(sql);
 			const failMetadataDelete =
 				String(sql).includes("DELETE FROM uploaded_files") &&
 				String(sql).includes("owner_user_id IN");
 			return {
 				bind(...values) {
-					statement.bind(...values);
+					statement = statement.bind(...values);
 					return this;
 				},
 				all() {

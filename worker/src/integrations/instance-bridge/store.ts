@@ -1,5 +1,7 @@
 import { decryptSecretValue, encryptSecretValue } from "../../encryption.js";
-import { authorizeChannelManagement } from "../../room-access.js";
+import { authorizeChannelManagement, getChannelById } from "../../room-access.js";
+import { readAuthorization, managedGroupScope } from '../../rbac/authorization.ts';
+import { hasPermission } from '../../../../shared/admin-permissions.ts';
 import { isUserDisabled } from "../../user-status.js";
 import { bridgeError, normalizeOrigin, type Endpoint } from "./protocol.ts";
 
@@ -82,13 +84,22 @@ export function encryptInvitationSecret(env: BridgeEnv, id: string, secret: stri
   return encryptSecretValue(env, secret, `instance-bridge-invitation:${id}`);
 }
 
-export async function requireAdmin(env: BridgeEnv, session: { userId: number }) {
+export async function requireAdmin(env: BridgeEnv, session: { userId: number }, permission = 'instance_bridge.manage') {
   const user = await first(env.DB, "SELECT * FROM users WHERE id = ? AND deleted_at IS NULL", session.userId);
-  if (!user?.is_admin || isUserDisabled(user)) throw bridgeError("admin_required", 403);
+  if (!user || isUserDisabled(user)) throw bridgeError("admin_required", 403);
+  const authorization = await readAuthorization(env.DB, session.userId);
+  if (!hasPermission(authorization, permission)) throw bridgeError("admin_required", 403);
+  return authorization;
 }
 export async function managedGroup(env: BridgeEnv, session: { userId: number }, channelId: number) {
-  await requireAdmin(env, session);
-  const access = await authorizeChannelManagement(env.DB, { ...session, isAdmin: true }, channelId);
+  const authorization = await requireAdmin(env, session);
+  // 超管保持原有全站桥接运维行为；子管理员必须拥有真实群主关系，不能制造全权聊天身份。
+  if (authorization.isSuperAdmin) {
+    const channel = await getChannelById(env.DB, channelId);
+    if (!channel || !['public', 'private'].includes(channel.kind)) throw bridgeError('group_unavailable', 403);
+    return channel;
+  }
+  const access = await authorizeChannelManagement(env.DB, session, channelId);
   if (!access.ok) throw bridgeError("group_unavailable", 403);
   return access.channel;
 }
@@ -103,11 +114,14 @@ export function publicBinding(b: Binding & { queued?: number }) {
     delivered: b.delivered_count, discarded: b.discarded_count };
 }
 
-export async function adminState(env: BridgeEnv) {
+export async function adminState(env: BridgeEnv, actor = { isSuperAdmin: true, userId: 0 }) {
+  const scope = managedGroupScope(actor, 'b.channel_id');
+  const channelScope = managedGroupScope(actor, 'channels.id');
   const [{ results: bindings }, { results: channels }] = await Promise.all([
     env.DB.prepare(`SELECT b.*, (SELECT COUNT(*) FROM bridge_outbox o WHERE o.binding_id = b.id) AS queued
-      FROM instance_bindings b ORDER BY b.created_at DESC LIMIT 200`).all<Binding & { queued: number }>(),
-    env.DB.prepare("SELECT id, name, kind FROM channels WHERE kind IN ('public', 'private') AND deleted_at IS NULL ORDER BY name").all(),
+      FROM instance_bindings b WHERE ${scope.sql} ORDER BY b.created_at DESC LIMIT 100`).bind(...scope.params).all<Binding & { queued: number }>(),
+    env.DB.prepare(`SELECT id, name, kind FROM channels WHERE kind IN ('public', 'private') AND deleted_at IS NULL
+      AND ${channelScope.sql} ORDER BY name LIMIT 100`).bind(...channelScope.params).all(),
   ]);
   return { instance: await first(env.DB, "SELECT instance_id AS id, origin FROM bridge_instance WHERE singleton = 1"),
     channels, bindings: bindings.map(publicBinding) };

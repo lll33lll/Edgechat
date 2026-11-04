@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="Edgechat.png" alt="EdgeChat" width="640" />
+  <img src="Edgechat.jpg" alt="EdgeChat" width="640" />
+
+  <p>
+    <a href="https://trendshift.io/repositories/140939?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-140939" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/140939/daily?language=JavaScript" alt="aozorae%2FEdgechat | Trendshift" width="250" height="55"/></a>
+  </p>
 
   <h3>Your own chat space, without starting by maintaining a server.</h3>
   <p>Open-source, self-hosted team chat running on Cloudflare</p>
@@ -30,6 +34,12 @@
 You do not need to maintain a permanently running server. The application and data resources are deployed in your own Cloudflare account, with GitHub Actions handling automatic deployment and updates. If your members already use Telegram, you can connect the groups on both sides and let everyone keep using the chat entry point they are familiar with.
 
 [Interface Preview](#interface-preview) · [Live Demo](#live-demo) · [Telegram Bridging](#telegram-two-way-bridging) · [Features](#features) · [Privacy and Encryption](#privacy-and-encryption) · [Deployment](#deployment) · [Local Development](#local-development)
+
+## Direct-message voice calls
+
+From `2.11.0`, web DMs support one-to-one voice calls with answer, decline, mute, hangup and duration. P2P is the default; a compact selector supports manual TURN switching and failed direct connections fall back to TURN. No group/video calls or offline incoming calls; the demo does not place real calls.
+
+Configure Worker / Repository Secrets `EDGECHAT_TURN_KEY_ID` and `EDGECHAT_TURN_API_TOKEN` to enable TURN. Without them only P2P is available. Cloudflare SFU and TURN share the first 1,000 GB free each month; excess egress costs $0.05/GB. See [configuration and protocol](docs/api/voice-calls.md).
 
 ## Cross-instance group binding
 
@@ -119,7 +129,7 @@ This suits teams and communities that already have Telegram groups but also need
 ### 🔌 Connections and Extensions
 
 - Administrator-configured two-way Telegram bridging for public and private groups, including voice message synchronization.
-- Members can connect the configured Telegram bot in Settings to receive direct-message and group-mention alerts while the site is closed. Each alert type can be disabled independently; alerts do not include message bodies.
+- Members can connect the configured Telegram bot in Settings to receive the first 8 characters of DMs and group mentions with a link to EdgeChat. Use `/chats`, tap an existing DM contact, and reply to the prompt to send text without memorizing user IDs. Each alert type can be disabled independently.
 - WebMCP site tools: in compatible client environments, provides login, conversation queries, message reading, sending, and related capabilities.
 
 ## Privacy and Encryption
@@ -132,7 +142,7 @@ The admin console does not provide an entry point for viewing group or direct-me
 > **This is server-side encryption, not end-to-end encryption.**
 > The Worker decrypts content after checking session permissions. The Cloudflare runtime and the party holding the keys must still be trusted. The absence of a message-viewing entry point in the admin console does not mean that the deployer is technically unable to access the content.
 >
-> When Telegram bridging is enabled, relayed messages also enter the corresponding Telegram conversation.
+> Group bridging still synchronizes full messages to Telegram. Private alerts send only the first 8 Unicode characters and a conversation link without login credentials; attachment names stay hidden. Previews remain plaintext, short messages may appear in full, and previously sent full-text copies are not recalled. EdgeChat storage remains encrypted. Disconnect the bot to disable both notifications and DM sending.
 
 <details>
 <summary><strong>Key Management and Rotation</strong></summary>
@@ -151,7 +161,7 @@ To specify a key manually, create a GitHub Repository Secret named `EDGECHAT_ENC
 
 The first deployment adopts this value directly.
 
-To enable automatic incremental rotation for an existing Worker, manually run `Deploy Worker` and check `rotate_encryption_key`. The workflow adds only one versioned key Secret and switches the active key ID to the new version; all old Secrets and the old JSON keyring remain unchanged. New messages use the new key, while old ciphertext continues to be decrypted with the key ID in its own envelope.
+To enable automatic incremental rotation for an existing Worker, manually run `00 Deploy Worker` and check `rotate_encryption_key`. The workflow adds only one versioned key Secret and switches the active key ID to the new version; all old Secrets and the old JSON keyring remain unchanged. New messages use the new key, while old ciphertext continues to be decrypted with the key ID in its own envelope.
 
 `apply_encryption_keyring` is a fallback manual override entry point. When using it, the Repository Secret must contain the complete JSON keyring. `keys` must retain every old key ID still referenced by historical ciphertext, then add the new key and update `activeKeyId`.
 
@@ -175,11 +185,21 @@ See [TECHNICAL.md](TECHNICAL.md) for more implementation details.
 
 ## Deployment
 
+**First login: there is no default administrator password or public sign-up; the schema SQL does not create accounts.** For Actions, configure `EDGECHAT_ADMIN_USERNAME` / `EDGECHAT_ADMIN_PASSWORD` Repository Secrets. For manual deployment, generate and apply the administrator SQL. See [first administrator setup](docs/admin-bootstrap.md#english) for commands and missing-credential recovery. Administrators can then create users or registration invitations.
+
 ### Automatic Deployment with GitHub Actions
 
-Using the GitHub Actions workflow included in the repository is recommended for deployment and subsequent updates.
+Forgot the administrator password? Update the repository's `EDGECHAT_ADMIN_PASSWORD` Secret and rerun `00 Deploy Worker`. Every deployment uses that Secret: a changed password invalidates old sessions, while an unchanged password preserves them. It never promotes or unbans accounts. See [administrator setup and recovery](docs/admin-bootstrap.md#english).
 
-After completing the Cloudflare authorization and repository configuration described in the documentation, you can manually run `Deploy Worker`, or trigger deployment by pushing code to the `master` or `main` branch. The workflow file is `.github/workflows/deploy-worker.yml`.
+Messages are retained for **30 days** by default, then automatically deleted in batches by daily cleanup. Set `MESSAGE_RETENTION_DAYS` to customize this period. Existing explicit settings remain effective after upgrades; deleted messages cannot be restored.
+
+Using the GitHub Actions workflow included in the repository is recommended for deployment and subsequent updates. `Sync Upstream` checks twice daily, merges upstream releases marked with the `EdgeChat-Update: stable` / `security` commit trailer, and explicitly dispatches deployment. See the [update guide](https://echat.azora.top/en/guide/updating-fork) for setup and token permissions, and the [deployment guide](https://echat.azora.top/en/guide/actions-deploy) for `MESSAGE_RETENTION_DAYS`.
+
+After forking, open **Actions** in your own repository, enable workflows when GitHub prompts you, then select **`00 Deploy Worker`** near the top of the list and click **`Run workflow`**. The `00` prefix is inherited by forks for default name sorting; it does not depend on upstream pin settings. No other workflow is needed to deploy the site.
+
+After completing the Cloudflare authorization and repository configuration described in the documentation, you can manually run `00 Deploy Worker`, or trigger deployment by pushing code to the `master` or `main` branch. The workflow file is `.github/workflows/deploy-worker.yml`.
+
+Workers-native rate limiting is enabled by default. Optional Cloudflare Turnstile login verification is off by default and can be enabled under Admin → Integrations → Login Verification. See [configuration and client compatibility](docs/login-verification.md) for Secrets and manual deployment bindings.
 
 **[Quick Start](https://echat.azora.top/guide/getting-started.html) · [GitHub Actions Deployment Guide](https://echat.azora.top/guide/actions-deploy.html)**
 

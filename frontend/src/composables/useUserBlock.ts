@@ -76,5 +76,5 @@ export function useUserBlock({
 		}
 	}
 
-	return { isBlockedByMe, saving, toggleUserBlock };
+	return { isBlockedByMe, saving, toggleUserBlock, applyBlockState };
 }

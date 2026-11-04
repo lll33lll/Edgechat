@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
+import { computed, ref } from 'vue';
+import { adminNavigation, adminRouteIcons } from '../frontend/src/admin/navigation.ts';
+import en from '../frontend/src/locales/en-US.js';
+import zh from '../frontend/src/locales/zh-CN.js';
+import tw from '../frontend/src/locales/zh-TW.js';
 
 function read(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -10,7 +16,8 @@ const routerSource = read('../frontend/src/router.js');
 const apiSource = read('../frontend/src/api.js');
 const adminApiSource = read('../worker/src/api/admin.js');
 const mainSource = read('../frontend/src/main.js');
-const navigationSource = read('../frontend/src/admin/navigation.js');
+const adminPageSource = read('../frontend/src/pages/AdminPage.vue');
+const navigationSource = read('../frontend/src/admin/navigation.ts');
 const sidebarSource = read('../frontend/src/components/admin/AdminSidebar.vue');
 const dashboardSource = read('../frontend/src/pages/AdminDashboardPage.vue');
 const usersSource = read('../frontend/src/pages/AdminUsersPage.vue');
@@ -35,8 +42,8 @@ const userCreatorStyles = read('../frontend/src/styles/admin/user-creator.css');
 const inviteManagerStyles = read('../frontend/src/styles/admin/invite-manager.css');
 
 test('后台默认进入仪表盘并新增受保护的注册邀请页', () => {
-  assert.match(routerSource, /import AdminDashboardPage/);
-  assert.match(routerSource, /import AdminInvitesPage/);
+  assert.match(routerSource, /component: \(\) => import\('\.\/pages\/AdminDashboardPage\.vue'\)/);
+  assert.match(routerSource, /component: \(\) => import\('\.\/pages\/AdminInvitesPage\.vue'\)/);
   assert.match(routerSource, /redirect: \{ name: 'admin-dashboard' \}/);
   assert.match(routerSource, /path: 'dashboard'/);
   assert.match(routerSource, /path: 'invites'/);
@@ -69,16 +76,78 @@ test('侧栏包含存储统计并移除消息查看入口', () => {
   assert.match(sidebarSource, /v-show="isGroupOpen\(item\)"/);
 });
 
-test('侧栏维护入口按导航顺序排列且不吸附到底部', () => {
-  const navigationOrder = ['storage', 'invites', 'telegram', 'site', 'maintenance'].map(
-    (id) => navigationSource.indexOf(`id: '${id}'`)
-  );
-  assert.ok(navigationOrder.every((index) => index >= 0));
-  assert.deepEqual(navigationOrder, [...navigationOrder].sort((a, b) => a - b));
-  assert.match(navigationSource, /id: 'maintenance'[\s\S]*separated: true/);
-  assert.match(sidebarSource, /admin-nav-item--separated/);
-  assert.match(adminSidebarStyles, /\.admin-nav-item--separated\s*\{[\s\S]*margin-block-start:/);
-  assert.doesNotMatch(adminSidebarStyles, /\.admin-nav-item--separated\s*\{[\s\S]*margin-block-start:\s*auto/);
+test('仪表盘独立置顶，业务分类与分隔线下的系统入口顺序固定', () => {
+  assert.deepEqual(adminNavigation.map((section) => section.items.map((item) => item.id)), [
+    ['dashboard'],
+    ['rbac', 'channels', 'users', 'invites'],
+    ['login-verification', 'telegram', 'instance-bridge'],
+    ['site', 'storage', 'maintenance', 'stealth']
+  ]);
+  assert.equal(adminNavigation[0].labelKey, undefined);
+  assert.equal(adminNavigation[1].labelKey, 'admin.nav.usersAccess');
+  assert.equal(adminNavigation[2].labelKey, 'admin.nav.integrations');
+  assert.deepEqual(adminNavigation.filter((section) => section.separated).map((section) => section.id), ['site-system']);
+  assert.match(sidebarSource, /admin-nav-section--separated/);
+  assert.match(sidebarSource, /:aria-labelledby="section\.label/);
+  assert.match(adminSidebarStyles, /\.admin-nav-section--separated\s*\{\s*padding-block-start:[\s\S]*border-block-start:/);
+  assert.doesNotMatch(adminSidebarStyles, /margin-block-start:\s*auto/);
+});
+
+test('用户相关入口图标彼此区分且顶栏同步同一来源', () => {
+  const items = adminNavigation[1].items;
+  assert.equal(new Set(items.map((item) => item.icon)).size, 4);
+  for (const item of adminNavigation.flatMap((section) => section.items)) {
+    assert.equal(adminRouteIcons[item.id], item.icon);
+  }
+  assert.match(routerSource, /adminTitleKey: 'rbac.title', adminIcon: 'rbac'/);
+  assert.match(routerSource, /adminTitleKey: 'rbac.channels', adminIcon: 'channels'/);
+});
+
+function sidebarNavigation(messages, pages, permissions = []) {
+  const source = sidebarSource.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .+;\r?\n/gm, '');
+  return runInNewContext(`${source}\n({ query, filteredNavigation });`, {
+    computed, ref, adminNavigation,
+    useRoute: () => ({ path: '/admin/dashboard', hash: '' }),
+    useRouter: () => ({}),
+    useI18n: () => ({ locale: ref('en-US'), t: (key) => messages[key] }),
+    store: { session: {} },
+    canVisit: (page) => pages.includes(page),
+    can: (permission) => permissions.includes(permission)
+  });
+}
+
+test('侧栏按权限过滤分类和子菜单，隐藏空分类', () => {
+  const { filteredNavigation } = sidebarNavigation(en, ['invites', 'storage'], ['invites.read']);
+  const sections = filteredNavigation.value;
+  assert.equal(sections.length, 2);
+  assert.equal(sections[0].id, 'users-access');
+  assert.equal(sections[0].items[0].children.length, 1);
+  assert.equal(sections[0].items[0].children[0].id, 'registration-links');
+  assert.equal(sections[1].id, 'site-system');
+  assert.equal(sections[1].items[0].id, 'storage');
+});
+
+test('三语言搜索支持分类、页面和子菜单，无结果时不残留空标题', () => {
+  const pages = adminNavigation.flatMap((section) => section.items.map((item) => item.id));
+  for (const messages of [en, zh, tw]) {
+    const { query, filteredNavigation } = sidebarNavigation(messages, pages, ['users.create', 'invites.read']);
+    query.value = messages['admin.nav.integrations'];
+    assert.equal(filteredNavigation.value.length, 1);
+    assert.equal(filteredNavigation.value[0].items.length, 3);
+    query.value = messages['admin.nav.registrationLinks'];
+    assert.equal(filteredNavigation.value.length, 1);
+    assert.equal(filteredNavigation.value[0].items[0].id, 'invites');
+    assert.ok(filteredNavigation.value[0].items[0].children.some((child) => child.id === 'registration-links'));
+    query.value = messages['admin.nav.storage'];
+    assert.equal(filteredNavigation.value[0].items[0].id, 'storage');
+    query.value = 'no-matching-navigation-xyz';
+    assert.equal(filteredNavigation.value.length, 0);
+    query.value = '';
+    assert.equal(filteredNavigation.value.length, 4);
+    assert.equal(messages['admin.nav.site'], messages['admin.nav.siteAppearance']);
+  }
+  assert.match(adminSidebarStyles, /\.admin-nav-item > svg\s*\{\s*flex-shrink: 0;/);
+  assert.match(adminSidebarStyles, /\.admin-nav-item > span\s*\{[\s\S]*?overflow-wrap: anywhere;/);
 });
 
 test('侧栏分组默认收起，主按钮导航且仅箭头负责展开', () => {
@@ -90,12 +159,13 @@ test('侧栏分组默认收起，主按钮导航且仅箭头负责展开', () =>
 });
 
 test('存储统计由按钮手动刷新且四个统计列均可排序', () => {
-  assert.match(routerSource, /import AdminStoragePage/);
+  assert.match(routerSource, /component: \(\) => import\('\.\/pages\/AdminStoragePage\.vue'\)/);
   assert.match(routerSource, /path: 'storage'/);
   assert.match(apiSource, /adminStorageScan/);
-  assert.match(adminApiSource, /\/api\/admin\/storage\/scan/);
-  assert.match(adminApiSource, /FILES\.list/);
-  assert.match(adminApiSource, /没有绑定 R2，无法统计存储空间/);
+  const storageApi = readFileSync(new URL('../worker/src/api/storage.ts', import.meta.url), 'utf8');
+  assert.match(storageApi, /\/api\/admin\/storage\/scan/);
+  assert.match(storageApi, /FILES\.list/);
+  assert.match(storageApi, /没有绑定 R2，无法统计存储空间/);
   assert.match(storageSource, /@click="refreshStorage"/);
   assert.doesNotMatch(storageSource, /onMounted\(refreshStorage\)/);
   assert.doesNotMatch(storageSource, /尚未统计|10 GB|免费存储/);
@@ -133,16 +203,35 @@ test('用户管理通过独立弹窗选择快捷、自定义或永久封禁时�
   assert.match(adminApiSource, /session_version = session_version \+ 1/);
 });
 
-test('注册邀请页限制内容宽度并用独立卡片组织创建工具与链接列表', () => {
+test('注册邀请页采用内容宽度驱动的紧凑表单和单面板分隔列表', () => {
   assert.match(invitesSource, /admin-invites-page/);
   assert.match(invitesPageStyles, /max-width: 1120px/);
-  assert.match(userCreatorSource, /admin-user-creator__identity-grid/);
+  assert.match(userCreatorSource, /admin-user-creator__form--with-group/);
   assert.match(userCreatorStyles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(inviteManagerSource, /invite-create-panel/);
+  assert.match(userCreatorStyles, /@container user-creator \(min-width: 56rem\)/);
+  assert.match(userCreatorStyles, /@container user-creator \(max-width: 32rem\)/);
+  assert.doesNotMatch(userCreatorSource, /class="panel admin-user-creator"/);
+  assert.doesNotMatch(inviteManagerSource, /invite-create-panel|tone="soft"/);
+  assert.match(inviteManagerSource, /<article[\s\S]*?class="admin-invite-card"/);
   assert.match(inviteManagerSource, /t\('invites\.createdCount', \{ count: invites\.length \}\)/);
   assert.match(inviteManagerSource, /admin-invite-card__status/);
-  assert.match(inviteManagerStyles, /border: 1px solid var\(--admin-border-strong\)/);
-  assert.doesNotMatch(inviteManagerStyles, /max-height: 320px|border-block-start: 1px solid var\(--admin-border\);\s*border-radius: 0/);
+  assert.match(inviteManagerStyles, /\.admin-invite-card \+ \.admin-invite-card\s*\{\s*border-block-start:/);
+  assert.doesNotMatch(inviteManagerStyles, /max-height: 320px|\.admin-invite-card\.ui-surface/);
+});
+
+test('紧凑邀请保留可见标签、完整链接、权限门禁和移动触控尺寸', () => {
+  assert.match(inviteManagerSource, /<span>{{ t\('invites\.noteLabel'\) }}<\/span>/);
+  assert.match(inviteManagerSource, /<span>{{ t\('invites\.maxUses'\) }}<\/span>/);
+  assert.match(inviteManagerSource, /:title="inviteLinkUrl\(invite\.token\)"/);
+  assert.match(inviteManagerSource, /v-if="can\('invites\.create'\)"/);
+  assert.match(inviteManagerSource, /invite\.isAvailable && can\('invites\.revoke'\)/);
+  assert.match(inviteManagerSource, /window\.confirm\(t\('invites\.confirmRevoke'\)\)/);
+  assert.match(inviteManagerSource, /aria-live="polite"/);
+  assert.match(inviteManagerSource, /class="error-text" role="alert"/);
+  assert.match(inviteManagerStyles, /@media \(max-width: 40rem\), \(pointer: coarse\)/);
+  assert.match(inviteManagerStyles, /width: 44px;\s*height: 44px;/);
+  assert.match(inviteManagerStyles, /overflow-wrap: anywhere/);
+  assert.match(userCreatorStyles, /min-height: 44px/);
 });
 
 test('网站设置只读取站点配置且不重复展示统计信息', () => {
@@ -154,15 +243,15 @@ test('网站设置只读取站点配置且不重复展示统计信息', () => {
 
 test('仪表盘复用现有概况接口并只展示可验证统计', () => {
   assert.match(dashboardSource, /api\.adminOverview\(\)/);
-  assert.match(dashboardSource, /channel\.messageCount/);
-  assert.match(dashboardSource, /dm\.messageCount/);
-  assert.match(dashboardSource, /overview\.value\.users\.filter/);
+  assert.match(dashboardSource, /overview\.value\.stats\.messages/);
+  assert.match(dashboardSource, /overview\.value\.stats\.activeUsers/);
+  assert.doesNotMatch(dashboardSource, /overview\.value\.users/);
   assert.match(dashboardSource, /t\('dashboard\.quickAccess'\)/);
   assert.match(dashboardSource, /t\('dashboard\.systemOverview'\)/);
 });
 
 test('Telegram 互通页由管理员路由保护并统一管理公开与私有群组映射', () => {
-  assert.match(routerSource, /import AdminTelegramPage/);
+  assert.match(routerSource, /component: \(\) => import\('\.\/pages\/AdminTelegramPage\.vue'\)/);
   assert.match(routerSource, /path: 'telegram'/);
   assert.match(routerSource, /adminTitleKey: 'admin\.nav\.telegram'/);
   assert.match(telegramSource, /api\.saveAdminTelegramConfig/);
@@ -176,17 +265,50 @@ test('Telegram 互通页由管理员路由保护并统一管理公开与私有�
 test('仪表盘在中等桌面宽度提前重排且快捷入口文字保持完整', () => {
   assert.match(
     dashboardStyles,
-    /@media \(max-width: 96rem\)[\s\S]*\.admin-dashboard__body\s*\{\s*grid-template-columns: minmax\(0, 1fr\);/
+    /@media \(max-width: 64rem\)[\s\S]*\.admin-dashboard__body\s*\{\s*grid-template-columns: minmax\(0, 1fr\);/
   );
   assert.match(
     dashboardStyles,
-    /@media \(max-width: 75rem\)[\s\S]*\.admin-dashboard__metrics,\s*\.admin-quick-grid\s*\{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/
+    /@media \(max-width: 75rem\)[\s\S]*\.admin-dashboard__metrics\s*\{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/
   );
   assert.match(dashboardStyles, /\.admin-quick-link__copy strong\s*\{[\s\S]*overflow-wrap: anywhere;/);
   assert.doesNotMatch(
     dashboardStyles,
     /\.admin-quick-link__copy strong\s*\{[\s\S]*?text-overflow: ellipsis;[\s\S]*?\}/
   );
+});
+
+test('轻量后台保留按需加载、可访问导航和按权限展示的设置入口', () => {
+  const topbar = read('../frontend/src/components/admin/AdminTopbar.vue');
+  assert.match(topbar, /v-if="canVisit\('site'\)"/);
+  assert.match(topbar, /:aria-label="t\('admin\.nav\.site'\)"/);
+  assert.match(sidebarSource, /:aria-current="isChildActive\(item, child\) \? 'location'/);
+  assert.match(sidebarSource, /@keydown\.esc="closeMobileNavigation"/);
+  assert.match(sidebarSource, /mobileToggle\.value\?\.focus\(\)/);
+  assert.match(adminPageSource, /id="admin-main"[^>]+tabindex="-1"/);
+  assert.match(adminSidebarStyles, /position: fixed;\s*inset: 60px 0 0;/);
+  assert.doesNotMatch(adminStyles + adminTokens, /@import url|backdrop-filter/);
+});
+
+test('用户列表搜索明确为本页且保留原分页和权限操作', () => {
+  assert.match(usersSource, /filterAdminUsers\(users\.value, query\.value\)/);
+  assert.match(usersSource, /t\('users\.searchPage'\)/);
+  assert.match(usersSource, /users\.length < 100/);
+  assert.match(usersSource, /v-for="user in visibleUsers"/);
+  assert.match(usersSource, /aria-labelledby="admin-users-title"/);
+  assert.match(usersSource, /class="error-text" role="alert"/);
+  assert.match(usersSource, /can\('users\.delete'\) && canTarget\(user\)/);
+  assert.match(dashboardSource, /loading \|\| error \? '—'/);
+});
+
+test('用户组选择位于最右侧操作区，不再增高姓名列', () => {
+  const identityCell = usersSource.match(/<td class="admin-user-identity">([\s\S]*?)<\/td>/)[1];
+  const actionsCell = usersSource.match(/<td class="admin-user-actions"[^>]*>([\s\S]*?)<\/td>/)[1];
+  const usersStyles = read('../frontend/src/styles/admin/users.css');
+  assert.doesNotMatch(identityCell, /UserGroupAssignment/);
+  assert.match(actionsCell, /<UserGroupAssignment[^>]+v-if="store\.session\?\.isSuperAdmin"/);
+  assert.match(actionsCell, /<UserGroupAssignment[^\n]+\/>\s*<\/div>\s*$/);
+  assert.match(usersStyles, /\.admin-user-actions \.group-assignment\s*\{[^}]*margin: 0;[^}]*margin-inline-start: auto;/);
 });
 
 test('管理员消息正文查看的页面、客户端调用与服务端接口均已下线', () => {
@@ -197,7 +319,8 @@ test('管理员消息正文查看的页面、客户端调用与服务端接口�
 });
 
 test('后台视觉令牌匹配参考图并按职责拆分样式文件', () => {
-  assert.match(mainSource, /import '\.\/styles\/admin\.css';/);
+  assert.doesNotMatch(mainSource, /styles\/admin\.css/);
+  assert.match(adminPageSource, /import '\.\.\/styles\/admin\.css';/);
   assert.match(adminStyles, /@import '\.\/admin\/tokens\.css';/);
   assert.match(adminStyles, /@import '\.\/admin\/layout\.css';/);
   assert.match(adminStyles, /@import '\.\/admin\/controls\.css';/);
